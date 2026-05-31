@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  filterProviderNormalizableTools,
   filterRuntimeCompatibleTools,
   inspectRuntimeToolInputSchemas,
   projectRuntimeToolInputSchema,
@@ -29,15 +30,15 @@ describe("runtime tool input schema projection", () => {
     expect(
       inspectRuntimeToolInputSchemas([
         {
-          name: "dofbot_move_angles",
+          name: "fuzzplugin_move_angles",
           parameters: { type: "array", items: { type: "number" } },
         },
       ] as never),
     ).toEqual([
       {
-        toolName: "dofbot_move_angles",
+        toolName: "fuzzplugin_move_angles",
         toolIndex: 0,
-        violations: ['dofbot_move_angles.parameters.type must be "object"'],
+        violations: ['fuzzplugin_move_angles.parameters.type must be "object"'],
       },
     ]);
   });
@@ -86,7 +87,7 @@ describe("runtime tool input schema projection", () => {
       parameters: { type: "object", properties: {} },
     };
     const broken = {
-      name: "dofbot_move_angles",
+      name: "fuzzplugin_move_angles",
       parameters: { type: "array", items: { type: "number" } },
     };
 
@@ -94,11 +95,86 @@ describe("runtime tool input schema projection", () => {
       tools: [healthy],
       diagnostics: [
         {
-          toolName: "dofbot_move_angles",
+          toolName: "fuzzplugin_move_angles",
           toolIndex: 1,
-          violations: ['dofbot_move_angles.parameters.type must be "object"'],
+          violations: ['fuzzplugin_move_angles.parameters.type must be "object"'],
         },
       ],
+    });
+  });
+
+  it("quarantines unreadable runtime tool entries before field projection", () => {
+    const healthy = {
+      name: "healthy",
+      parameters: { type: "object", properties: {} },
+    };
+    const tools = [healthy] as Array<typeof healthy>;
+    const proxy = new Proxy(tools, {
+      get(target, property, receiver) {
+        if (property === "1") {
+          throw new Error("fuzzplugin tool entry getter exploded");
+        }
+        if (property === "length") {
+          return 2;
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    expect(filterRuntimeCompatibleTools(proxy)).toEqual({
+      tools: [healthy],
+      diagnostics: [
+        {
+          toolName: "tool[1]",
+          toolIndex: 1,
+          violations: ["tool[1] is unreadable"],
+        },
+      ],
+    });
+  });
+
+  it("quarantines unreadable runtime tool fields without dropping healthy siblings", () => {
+    const unreadable = {
+      name: "fuzzplugin_unreadable",
+      parameters: { type: "object", properties: {} },
+    };
+    Object.defineProperty(unreadable, "parameters", {
+      enumerable: true,
+      get() {
+        throw new Error("fuzzplugin parameters getter exploded");
+      },
+    });
+    const healthy = {
+      name: "healthy",
+      parameters: { type: "object", properties: {} },
+    };
+
+    expect(filterRuntimeCompatibleTools([unreadable, healthy])).toEqual({
+      tools: [healthy],
+      diagnostics: [
+        {
+          toolName: "fuzzplugin_unreadable",
+          toolIndex: 0,
+          violations: ["fuzzplugin_unreadable.parameters is unreadable"],
+        },
+      ],
+    });
+  });
+
+  it("keeps provider-normalizable object schemas for provider-specific cleanup", () => {
+    const dynamicSchema = {
+      name: "fuzzplugin_dynamic_ref",
+      parameters: {
+        type: "object",
+        properties: {
+          target: { $dynamicRef: "#target" },
+        },
+      },
+    };
+
+    expect(filterProviderNormalizableTools([dynamicSchema])).toEqual({
+      tools: [dynamicSchema],
+      diagnostics: [],
     });
   });
 });
