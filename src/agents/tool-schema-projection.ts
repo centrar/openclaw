@@ -257,8 +257,8 @@ function inspectToolEntries<TTool extends Pick<AnyAgentTool, "name" | "parameter
 
 export function inspectRuntimeToolInputSchemas(
   tools: readonly Pick<AnyAgentTool, "name" | "parameters">[],
-): readonly RuntimeToolSchemaDiagnostic[] {
-  return inspectToolEntries(readRuntimeToolEntries(tools), "runtime").diagnostics;
+): RuntimeToolSchemaDiagnostic[] {
+  return [...inspectToolEntries(readRuntimeToolEntries(tools), "runtime").diagnostics];
 }
 
 export function filterRuntimeCompatibleTools<
