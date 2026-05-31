@@ -548,8 +548,13 @@ function toolSchemaDiagnosticToFinding(params: {
   tools: readonly AnyAgentTool[];
   diagnostic: RuntimeToolSchemaDiagnostic;
 }): HealthFinding {
-  const tool = params.tools[params.diagnostic.toolIndex];
-  const pluginId = tool ? getPluginToolMeta(tool)?.pluginId : undefined;
+  let pluginId: string | undefined;
+  try {
+    const tool = params.tools[params.diagnostic.toolIndex];
+    pluginId = tool ? getPluginToolMeta(tool)?.pluginId : undefined;
+  } catch {
+    pluginId = undefined;
+  }
   const owner = pluginId ? ` from plugin ${pluginId}` : "";
   const agent = `Agent ${params.agentId} `;
   const path =

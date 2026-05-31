@@ -114,6 +114,36 @@ describe("doctor runtime tool schema error handling", () => {
     expect(mocks.disposeBundleRuntime).toHaveBeenCalledTimes(1);
   });
 
+  it("reports unreadable runtime tool entries without aborting doctor", async () => {
+    const healthy = tool("healthy", { type: "object", properties: {} });
+    const tools = [healthy] as AnyAgentTool[];
+    mocks.createOpenClawCodingTools.mockReturnValueOnce(
+      new Proxy(tools, {
+        get(target, property, receiver) {
+          if (property === "1") {
+            throw new Error("fuzzplugin tool entry getter exploded");
+          }
+          if (property === "length") {
+            return 2;
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      }),
+    );
+
+    await expect(collectRuntimeToolSchemaFindings({})).resolves.toContainEqual({
+      checkId: "core/doctor/runtime-tool-schemas",
+      severity: "error",
+      message: "Agent main tool tool[1] has an unsupported input schema for runtime projection.",
+      path: "tools.tool[1]",
+      target: "tool[1]",
+      requirement: "tool[1] is unreadable",
+      fixHint:
+        "Disable or update the offending plugin/tool so its parameters are a JSON object schema, then rerun doctor.",
+    });
+    expect(mocks.disposeBundleRuntime).toHaveBeenCalledTimes(1);
+  });
+
   it("reports bundle MCP runtime tool normalization failures without aborting doctor", async () => {
     mocks.createBundleMcpToolRuntime.mockResolvedValueOnce({
       tools: [bundleMcpTool("fuzzplugin__move_angles", { type: "object", properties: {} })],
