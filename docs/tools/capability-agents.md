@@ -19,6 +19,15 @@ Print the built-in capability profiles:
 node scripts/agents/capability-agent-profile.mjs print
 ```
 
+Inventory every local agent-like surface before importing a larger swarm:
+
+```bash
+node scripts/agents/agent-os-agent-inventory.mjs summary
+node scripts/agents/agent-os-agent-inventory.mjs scan --output .artifacts/agent-os-agent-inventory.json
+```
+
+The inventory uses the `agent-os.agent-inventory.v1` schema and dedupes configured `openclaw.json` agents, `agents_registry.json`, `~/.openclaw/agents`, `~/.openclaw/subagents`, `workspace_*` directories, repo/user skill directories with `SKILL.md`, skill-owned `agents/*.yaml` files, built-in capability profiles, and host-native bridge IDs. It classifies each ID by manageability so the scheduler can distinguish registered agents from tool adapters, skill adapters, dormant references, stale paths, and workspace-only candidates.
+
 Check whether the profiles are installed in your OpenClaw config:
 
 ```bash

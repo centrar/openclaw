@@ -12,11 +12,13 @@ on:
       - "docs/tools/capability-agents.md"
       - "docs/reference/agent-os-contract.md"
       - "docs/docs.json"
+      - "scripts/agents/agent-os-agent-inventory.mjs"
       - "scripts/agents/capability-agent-profile.mjs"
       - "scripts/agents/capability-proof-kit.mjs"
       - "scripts/docker/**"
       - "scripts/lib/agent-os-contracts.cjs"
       - "scripts/lib/proof-events.cjs"
+      - "test/scripts/agent-os-agent-inventory.test.ts"
       - "test/scripts/capability-agent-profile.test.ts"
       - "test/scripts/capability-proof-kit.test.ts"
       - "test/scripts/agent-os-contracts.test.ts"
@@ -81,6 +83,7 @@ jobs:
           set -euo pipefail
           node --check scripts/docker/full-local.mjs
           node --check scripts/package-openclaw-for-docker.mjs
+          node --check scripts/agents/agent-os-agent-inventory.mjs
 
       - name: Run Agent OS contract and security tests
         run: |
@@ -88,6 +91,7 @@ jobs:
           node scripts/run-vitest.mjs \
             test/scripts/package-openclaw-for-docker.test.ts \
             test/scripts/full-local-docker.test.ts \
+            test/scripts/agent-os-agent-inventory.test.ts \
             test/scripts/agent-os-contracts.test.ts \
             test/scripts/proof-events.test.ts \
             test/scripts/capability-agent-profile.test.ts \
@@ -137,6 +141,7 @@ jobs:
             "package/scripts/docker/sidecars/python-mcp-launcher.cjs"
             "package/scripts/lib/agent-os-contracts.cjs"
             "package/scripts/lib/proof-events.cjs"
+            "package/scripts/agents/agent-os-agent-inventory.mjs"
             "package/scripts/agents/capability-agent-profile.mjs"
             "package/scripts/agents/capability-proof-kit.mjs"
             "package/docker-compose.sidecars.yml"
@@ -158,6 +163,7 @@ jobs:
           node "$pkg/openclaw.mjs" --version
           test -f "$pkg/scripts/docker/full-local.mjs"
           test -f "$pkg/scripts/lib/agent-os-contracts.cjs"
+          test -f "$pkg/scripts/agents/agent-os-agent-inventory.mjs"
           test -f "$pkg/scripts/agents/capability-agent-profile.mjs"
           test -f "$pkg/docs/start/agent-os-alpha.md"
 

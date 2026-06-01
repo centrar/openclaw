@@ -140,7 +140,7 @@ The package script builds release artifacts, writes the package inventory, packs
 After packing, inspect the Agent OS files in the tarball:
 
 ```bash
-tar -tf .artifacts/agent-os-rc-package/openclaw-*.tgz | grep -E 'agent-os-contracts|proof-events|full-local|capability-agent-profile|capability-proof-kit|capability-agents|agent-os-contract'
+tar -tf .artifacts/agent-os-rc-package/openclaw-*.tgz | grep -E 'agent-os-agent-inventory|agent-os-contracts|proof-events|full-local|capability-agent-profile|capability-proof-kit|capability-agents|agent-os-contract'
 ```
 
 At minimum the tarball must contain:
@@ -149,6 +149,7 @@ At minimum the tarball must contain:
 - `scripts/docker/sidecars/`
 - `scripts/lib/agent-os-contracts.cjs`
 - `scripts/lib/proof-events.cjs`
+- `scripts/agents/agent-os-agent-inventory.mjs`
 - `scripts/agents/capability-agent-profile.mjs`
 - `scripts/agents/capability-proof-kit.mjs`
 - `docs/start/agent-os-alpha.md`
@@ -191,6 +192,15 @@ For the field-level security contract, use [Agent OS contract](/reference/agent-
 ## Adapter strategy
 
 Make native OpenClaw capability agents stable first. They are the Win32-style contract for this system: documented, boring, powerful, and durable.
+
+Audit the local control-plane inventory before importing or routing a larger swarm:
+
+```bash
+node scripts/agents/agent-os-agent-inventory.mjs summary
+node scripts/agents/agent-os-agent-inventory.mjs scan --output .artifacts/agent-os-agent-inventory.json
+```
+
+The scan writes an `agent-os.agent-inventory.v1` artifact that separates configured OpenClaw agents, filesystem agents, skill-owned agents, tool adapters, workspace-only entries, native bridge agents, dormant entries, and stale path references. Use that inventory as the import plan; do not flatten every discovered script or skill into `agents.list`.
 
 External framework adapters should target the Agent OS contract rather than bypass it:
 
