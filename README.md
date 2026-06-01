@@ -29,6 +29,20 @@ Supported channels include: WhatsApp, Telegram, Slack, Discord, Google Chat, Sig
 
 New install? Start here: [Getting started](https://docs.openclaw.ai/start/getting-started)
 
+## Agent OS alpha on this branch
+
+This product branch also carries the centrar **Agent OS alpha** layer. It is not an upstream OpenClaw landing PR. It is a local-first, proof-native runtime profile that boots Gateway, Sentinel, signal-hub, Blackboard, memory/wiki sync, capability agents, and proof journals as one substrate.
+
+The release-candidate promise is practical and testable:
+
+- one local full-stack boot path: `pnpm local:full`
+- benchmark proof: `pnpm local:full:bench`
+- golden Agent OS E2E proof: `pnpm local:full:golden`
+- package proof from a tarball, not only from source checkout
+- native OpenClaw capability agents as the first-class worker contract
+
+Start with [Agent OS alpha](https://docs.openclaw.ai/start/agent-os-alpha), then use [Capability agents](https://docs.openclaw.ai/tools/capability-agents) and [Agent OS contract](https://docs.openclaw.ai/reference/agent-os-contract) for the stable ticket, capability, proof, artifact, lifecycle, and sandbox contracts.
+
 Preferred setup: run `openclaw onboard` in your terminal.
 OpenClaw Onboard guides you step by step through setting up the gateway, workspace, channels, and skills. It is the recommended CLI setup path and works on **macOS, Linux, and Windows (via WSL2; strongly recommended)**.
 Works with npm, pnpm, or bun.
