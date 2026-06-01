@@ -50,6 +50,7 @@ const DEFAULT_SMOKE_PATH = path.join(".artifacts", "full-local-autonomy-smoke.js
 const DEFAULT_GOLDEN_E2E_PATH = path.join(".artifacts", "full-local-agent-os-golden-e2e.json");
 const DEFAULT_MEMORY_WIKI_GATEWAY_TIMEOUT_MS = 300_000;
 const DEFAULT_SENTINEL_MODEL = "nvidia/meta/llama-3.1-8b-instruct";
+const DEFAULT_NVIDIA_EMBEDDING_MODEL = "nvidia/nv-embed-v1";
 const DEFAULT_SENTINEL_PROMPT = "Reply exactly: sentinel-smoke-ok";
 const DEFAULT_SMOKE_AGENT = "main";
 const DEFAULT_FULL_LOCAL_BLACKBOARD_JOURNAL_MODE = "DELETE";
@@ -1799,6 +1800,7 @@ export function buildFullLocalContainerConfig(config, params) {
 
   const agents = ensureRecord(next, "agents");
   const defaults = ensureRecord(agents, "defaults");
+  const nvidiaSentinelBaseUrl = cleanString(params.nvidiaSentinelBaseUrl);
   defaults.workspace =
     mapConfiguredHostPathToContainer(
       defaults.workspace,
@@ -1806,14 +1808,37 @@ export function buildFullLocalContainerConfig(config, params) {
       "agents.defaults.workspace",
       params,
     ) || CONTAINER_WORKSPACE_DIR;
+  const existingMemorySearch =
+    defaults.memorySearch && typeof defaults.memorySearch === "object" ? defaults.memorySearch : {};
+  const memorySearchProvider = cleanString(existingMemorySearch.provider) ?? "openai-compatible";
+  const memorySearchModel = cleanString(existingMemorySearch.model);
+  const useFullLocalMemoryEmbeddingDefaults = !cleanString(existingMemorySearch.provider);
+  const existingMemorySearchRemote =
+    existingMemorySearch.remote && typeof existingMemorySearch.remote === "object"
+      ? existingMemorySearch.remote
+      : {};
+  const nvidiaGatewayApiKey = cleanString(params.nvidiaGatewayApiKey);
   defaults.memorySearch = {
-    ...(defaults.memorySearch && typeof defaults.memorySearch === "object"
-      ? defaults.memorySearch
-      : {}),
+    ...existingMemorySearch,
     enabled: true,
+    provider: memorySearchProvider,
+    ...(useFullLocalMemoryEmbeddingDefaults && !memorySearchModel
+      ? { model: DEFAULT_NVIDIA_EMBEDDING_MODEL }
+      : {}),
+    ...(useFullLocalMemoryEmbeddingDefaults && nvidiaSentinelBaseUrl
+      ? {
+          documentInputType: "passage",
+          queryInputType: "query",
+          remote: {
+            ...existingMemorySearchRemote,
+            baseUrl: nvidiaSentinelBaseUrl,
+            ...(nvidiaGatewayApiKey ? { apiKey: nvidiaGatewayApiKey } : {}),
+          },
+        }
+      : {}),
     sync: {
-      ...(defaults.memorySearch?.sync && typeof defaults.memorySearch.sync === "object"
-        ? defaults.memorySearch.sync
+      ...(existingMemorySearch.sync && typeof existingMemorySearch.sync === "object"
+        ? existingMemorySearch.sync
         : {}),
       watch: false,
     },
@@ -1858,13 +1883,11 @@ export function buildFullLocalContainerConfig(config, params) {
   }
 
   const plugins = ensureRecord(next, "plugins");
-  const nvidiaSentinelBaseUrl = cleanString(params.nvidiaSentinelBaseUrl);
   if (nvidiaSentinelBaseUrl) {
     const models = ensureRecord(next, "models");
     const providers = ensureRecord(models, "providers");
     const nvidiaProvider = ensureRecord(providers, "nvidia");
     nvidiaProvider.baseUrl = nvidiaSentinelBaseUrl;
-    const nvidiaGatewayApiKey = cleanString(params.nvidiaGatewayApiKey);
     if (nvidiaGatewayApiKey) {
       nvidiaProvider.apiKey = nvidiaGatewayApiKey;
     }

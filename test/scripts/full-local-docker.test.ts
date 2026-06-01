@@ -3143,13 +3143,22 @@ describe("scripts/docker/full-local", () => {
         configDir,
         customSwarmDir,
         cwd: repoRoot,
+        nvidiaGatewayApiKey: "sentinel-secret",
         nvidiaSentinelBaseUrl: "http://openclaw-sentinel:18888/v1",
         workspaceDir,
       },
     ) as {
       agents: {
         defaults: {
-          memorySearch: { enabled: boolean; sync: { watch: boolean } };
+          memorySearch: {
+            enabled: boolean;
+            documentInputType: string;
+            model: string;
+            provider: string;
+            queryInputType: string;
+            remote: { apiKey: string; baseUrl: string };
+            sync: { watch: boolean };
+          };
           workspace: string;
         };
         list: Array<{ agentDir: string; systemPromptOverride?: string; workspace: string }>;
@@ -3162,6 +3171,14 @@ describe("scripts/docker/full-local", () => {
     };
 
     expect(overlay.agents.defaults.memorySearch.enabled).toBe(true);
+    expect(overlay.agents.defaults.memorySearch.provider).toBe("openai-compatible");
+    expect(overlay.agents.defaults.memorySearch.model).toBe("nvidia/nv-embed-v1");
+    expect(overlay.agents.defaults.memorySearch.queryInputType).toBe("query");
+    expect(overlay.agents.defaults.memorySearch.documentInputType).toBe("passage");
+    expect(overlay.agents.defaults.memorySearch.remote).toEqual({
+      apiKey: "sentinel-secret",
+      baseUrl: "http://openclaw-sentinel:18888/v1",
+    });
     expect(overlay.agents.defaults.memorySearch.sync.watch).toBe(false);
     expect(overlay.agents.defaults.workspace).toBe("/home/node/.openclaw/workspace");
     expect(overlay.agents.list[0]?.workspace).toBe("/home/node/.openclaw/workspace_main");
@@ -3178,6 +3195,46 @@ describe("scripts/docker/full-local", () => {
       obsidian: { enabled: true, openAfterWrites: false, useOfficialCli: false },
       vault: { path: "/home/node/custom-swarm/Obsidian Vault", renderMode: "obsidian" },
       vaultMode: "bridge",
+    });
+  });
+
+  it("preserves an explicit full-local memory embedding provider", () => {
+    const overlay = buildFullLocalContainerConfig(
+      {
+        agents: {
+          defaults: {
+            memorySearch: {
+              model: "gemini-embedding-001",
+              provider: "gemini",
+            },
+          },
+        },
+      },
+      {
+        configDir: path.resolve("home", ".openclaw"),
+        customSwarmDir: path.resolve("AG-Custom-Swarm"),
+        cwd: path.resolve("repo-root"),
+        nvidiaSentinelBaseUrl: "http://openclaw-sentinel:18888/v1",
+        workspaceDir: path.resolve("external-workspace"),
+      },
+    ) as {
+      agents: {
+        defaults: {
+          memorySearch: {
+            enabled: boolean;
+            model: string;
+            provider: string;
+            sync: { watch: boolean };
+          };
+        };
+      };
+    };
+
+    expect(overlay.agents.defaults.memorySearch).toMatchObject({
+      enabled: true,
+      model: "gemini-embedding-001",
+      provider: "gemini",
+      sync: { watch: false },
     });
   });
 
