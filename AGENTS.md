@@ -5,7 +5,8 @@ Skills own workflows; root owns hard policy and routing.
 
 ## Start
 
-- Repo: `https://github.com/openclaw/openclaw`
+- Product repo: `https://github.com/centrar/openclaw`
+- Upstream repo: `https://github.com/openclaw/openclaw`
 - Replies: repo-root refs only: `extensions/telegram/src/index.ts:80`. No absolute paths, no `~/`.
 - Docs/user-visible work: `pnpm docs:list`, then read relevant docs only.
 - Fix/triage answers need source, tests, current/shipped behavior, and dependency contract proof.
@@ -20,6 +21,14 @@ Skills own workflows; root owns hard policy and routing.
 - Product/docs/UI/changelog wording: "plugin/plugins"; `extensions/` is internal.
 - New channel/plugin/app/doc surface: update `.github/labeler.yml` + GH labels.
 - New `AGENTS.md`: add sibling `CLAUDE.md` symlink; edit `AGENTS.md` only.
+
+## Product Fork Boundary
+
+- Agent OS and centrar product work lives in `https://github.com/centrar/openclaw`.
+- `https://github.com/openclaw/openclaw` is upstream reference/dependency by default.
+- Do not create, reopen, refresh, comment on, label, close, or otherwise mutate upstream `openclaw/openclaw` issues or PRs unless the user explicitly asks for upstream contribution or upstream maintainer action.
+- Default product shipping pushes to the `centrar` remote, local release branches, or product-owned docs. Do not create an upstream PR as part of product shipping.
+- Upstream contributions are opt-in, narrow, owner-reviewed changes only. Never reopen or recreate all-in-one Agent OS/full-local substrate PRs, including closed upstream PRs #88746 and #88873.
 
 ## ClawSweeper Review Policy
 
@@ -142,6 +151,7 @@ Skills own workflows; root owns hard policy and routing.
 
 ## GitHub / PRs
 
+- Product fork boundary overrides this section: product work targets `centrar/openclaw`; upstream `openclaw/openclaw` mutations require an explicit upstream ask.
 - Use `$openclaw-pr-maintainer` immediately for maintainer-side OpenClaw issue/PR review, triage, duplicates, labels, comments, close, land, or evidence. Contributor PR creation/refresh follows the requested contributor workflow; linked refs alone do not require maintainer archive tooling.
 - Issue/PR start: `git status -sb`; if clean, `git pull --ff-only`; if dirty, yell before pull/rebase.
 - PR refs: `gh pr view/diff` or `gh api`, not web search. Prefer `gitcrawl` for maintainer discovery; missing/stale `gitcrawl` falls through to live `gh`, not contributor setup. Verify live with `gh` before mutation.
