@@ -176,6 +176,36 @@ describe("sentinel-gateway.cjs", () => {
     }
   });
 
+  it("refuses unauthenticated LAN binds without an explicit exposure flag", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "openclaw-sentinel-unauth-lan-"));
+    try {
+      const isolatedScript = path.join(tempDir, "sentinel-gateway.cjs");
+      copyFileSync(sentinelScript, isolatedScript);
+      const result = spawnSync(process.execPath, [isolatedScript], {
+        cwd: tempDir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: tempDir,
+          OPENCLAW_ENV_FILE: path.join(tempDir, "missing.env"),
+          OPENCLAW_HOME: tempDir,
+          OPENCLAW_CONFIG_PATH: "",
+          OPENCLAW_SENTINEL_HOST: "0.0.0.0",
+          OPENCLAW_SENTINEL_REQUIRE_TOKEN: "0",
+          OPENCLAW_SENTINEL_TOKEN: "",
+          OPENCLAW_STATE_DIR: "",
+          USERPROFILE: tempDir,
+        },
+        timeout: 2_000,
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("OPENCLAW_SENTINEL_ALLOW_UNAUTHENTICATED_LAN=1");
+    } finally {
+      rmSync(tempDir, { force: true, recursive: true });
+    }
+  });
+
   it("blocks Sentinel auth settings from workspace dotenv files", () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "openclaw-sentinel-workspace-env-"));
     try {
@@ -702,10 +732,11 @@ describe("sentinel-gateway.cjs", () => {
     });
   });
 
-  it("binds to the requested host when Sentinel auth is explicitly disabled", async () => {
+  it("binds to the requested host when unauthenticated LAN exposure is explicitly allowed", async () => {
     await withTempVault(async (vaultPath) => {
       const port = await getFreePort();
       const { child, getStderr, getStdout } = spawnSentinel(vaultPath, port, {
+        OPENCLAW_SENTINEL_ALLOW_UNAUTHENTICATED_LAN: "1",
         OPENCLAW_SENTINEL_HOST: "0.0.0.0",
         OPENCLAW_SENTINEL_REQUIRE_TOKEN: "0",
         OPENCLAW_SENTINEL_TOKEN: "",

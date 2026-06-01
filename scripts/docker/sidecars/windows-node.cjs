@@ -13,7 +13,7 @@ const {
   AGENT_OS_TICKET_STATUS_SQL_LIST,
 } = require("../../lib/agent-os-contracts.cjs");
 
-const DEFAULT_NATIVE_AGENT_IDS = ["uba_god_mode", "pipeline_guardian"];
+const DEFAULT_NATIVE_AGENT_IDS = [];
 const DEFAULT_BLACKBOARD_JOURNAL_MODE = "WAL";
 const DEFAULT_BLACKBOARD_BUSY_TIMEOUT_MS = 10000;
 const BLACKBOARD_JOURNAL_MODES = new Set(["DELETE", "TRUNCATE", "PERSIST", "WAL"]);
