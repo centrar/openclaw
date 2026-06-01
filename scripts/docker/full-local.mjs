@@ -100,7 +100,7 @@ const DEFAULT_EXEC_TIMEOUT_MS = 5_000;
 const DEFAULT_EXEC_MAX_OUTPUT_BYTES = 1024 * 1024;
 const WINDOWS_ABS_PATH_PATTERN = /^[A-Za-z]:[\\/]/;
 const WINDOWS_UNC_PATH_PATTERN = /^\\\\[^\\]+\\[^\\]+/;
-const DEFAULT_NATIVE_AGENT_IDS = ["uba_god_mode", "pipeline_guardian"];
+const DEFAULT_NATIVE_AGENT_IDS = [];
 const HOST_NATIVE_MARKERS = new Set([
   "desktop",
   "desktop-native",
@@ -1286,8 +1286,7 @@ function agentRequestsHostNativeRuntime(entry) {
 
 export function resolveFullLocalNativeAgentIds(config, env = process.env) {
   const explicit = splitDelimitedList(env.OPENCLAW_NATIVE_AGENT_IDS);
-  const disabledDefaults = asBoolean(env.OPENCLAW_FULL_LOCAL_DISABLE_DEFAULT_NATIVE_AGENTS);
-  const ids = new Set(disabledDefaults ? [] : DEFAULT_NATIVE_AGENT_IDS);
+  const ids = new Set(DEFAULT_NATIVE_AGENT_IDS);
   for (const id of explicit) {
     ids.add(id);
   }
@@ -2174,6 +2173,10 @@ export async function chooseHostPublishPort(
 }
 
 export function parseDockerPublishHostPort(value, envKey = "OPENCLAW_PUBLISH") {
+  return parseDockerPublishBinding(value, envKey)?.hostPort ?? null;
+}
+
+export function parseDockerPublishBinding(value, envKey = "OPENCLAW_PUBLISH") {
   const raw = cleanString(value);
   if (!raw) {
     return null;
@@ -2184,24 +2187,78 @@ export function parseDockerPublishHostPort(value, envKey = "OPENCLAW_PUBLISH") {
     if (closeBracketIndex < 0) {
       throw new Error(`${envKey} must use [host]:hostPort:containerPort syntax.`);
     }
+    const host = publish.slice(1, closeBracketIndex).trim();
     const rest = publish.slice(closeBracketIndex + 1);
     const parts = rest.startsWith(":") ? rest.slice(1).split(":") : [];
     if (parts.length !== 2) {
       throw new Error(`${envKey} must use [host]:hostPort:containerPort syntax.`);
     }
-    return parseTcpPortString(parts[0], envKey);
+    return { host, hostPort: parseTcpPortString(parts[0], envKey) };
   }
 
   const parts = publish.split(":");
   if (parts.length === 2) {
-    return parseTcpPortString(parts[0], envKey);
+    return { host: null, hostPort: parseTcpPortString(parts[0], envKey) };
   }
   if (parts.length === 3) {
-    return parseTcpPortString(parts[1], envKey);
+    return { host: parts[0].trim(), hostPort: parseTcpPortString(parts[1], envKey) };
   }
   throw new Error(
     `${envKey} must use hostPort:containerPort or host:hostPort:containerPort syntax.`,
   );
+}
+
+function normalizePublishHost(host) {
+  const raw = cleanString(host);
+  if (!raw) {
+    return null;
+  }
+  return raw.replace(/^\[(.*)\]$/u, "$1").toLowerCase();
+}
+
+function publishHostIsLoopback(host) {
+  const normalized = normalizePublishHost(host);
+  return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1";
+}
+
+function collectLanPublishBindings(env = process.env) {
+  const bindings = [];
+  const fullPublishBindings = [
+    ["OPENCLAW_GATEWAY_PUBLISH", "Gateway"],
+    ["OPENCLAW_BRIDGE_PUBLISH", "Gateway bridge"],
+    ["OPENCLAW_MSTEAMS_PUBLISH", "Microsoft Teams bot"],
+  ];
+  for (const [envKey, label] of fullPublishBindings) {
+    const raw = cleanString(env[envKey]);
+    if (!raw) {
+      continue;
+    }
+    const binding = parseDockerPublishBinding(raw, envKey);
+    if (!binding || publishHostIsLoopback(binding.host)) {
+      continue;
+    }
+    bindings.push(
+      `${envKey} publishes ${label} on ${binding.host ? binding.host : "all interfaces"}`,
+    );
+  }
+
+  const hostOnlyBindings = [
+    ["OPENCLAW_GATEWAY_PUBLISH_HOST", "OPENCLAW_GATEWAY_PUBLISH", "Gateway"],
+    ["OPENCLAW_BRIDGE_PUBLISH_HOST", "OPENCLAW_BRIDGE_PUBLISH", "Gateway bridge"],
+    ["OPENCLAW_MSTEAMS_PUBLISH_HOST", "OPENCLAW_MSTEAMS_PUBLISH", "Microsoft Teams bot"],
+    ["OPENCLAW_SENTINEL_PUBLISH_HOST", null, "Sentinel"],
+  ];
+  for (const [envKey, overriddenBy, label] of hostOnlyBindings) {
+    if (overriddenBy && cleanString(env[overriddenBy])) {
+      continue;
+    }
+    const host = cleanString(env[envKey]);
+    if (!host || publishHostIsLoopback(host)) {
+      continue;
+    }
+    bindings.push(`${envKey} publishes ${label} on ${host}`);
+  }
+  return bindings;
 }
 
 async function chooseDockerPublishHostPort(env, options, portAvailable = isPortAvailable) {
@@ -2665,6 +2722,16 @@ export function validateFullLocalRuntime(facts, env = process.env) {
   if (!facts.nvidiaApiKeyConfigured) {
     errors.push(
       "Missing NVIDIA API key pool. Set NVIDIA_API_KEY/NVIDIA_API_KEYS, or set models.providers.nvidia.apiKey when the provider is not already routed through Sentinel.",
+    );
+  }
+
+  const lanPublishBindings = collectLanPublishBindings(env);
+  if (
+    lanPublishBindings.length > 0 &&
+    !asBoolean(cleanString(env.OPENCLAW_FULL_LOCAL_ALLOW_LAN_PUBLISH) ?? "0")
+  ) {
+    errors.push(
+      `Full-local refuses LAN Docker publish bindings unless OPENCLAW_FULL_LOCAL_ALLOW_LAN_PUBLISH=1: ${lanPublishBindings.join("; ")}.`,
     );
   }
 
@@ -4560,6 +4627,7 @@ Useful env:
   OPENCLAW_FULL_LOCAL_SKIP_PYTHON_MCP_PREPARE=1 Skip Python MCP venv preparation after Compose starts.
   OPENCLAW_FULL_LOCAL_PYTHON_MCP_PREPARE_TIMEOUT_MS Timeout for each Python MCP venv prepare.
   OPENCLAW_FULL_LOCAL_SKIP_WINDOWS_NODE=1 Skip the Windows-native desktop agent bridge.
+  OPENCLAW_FULL_LOCAL_ALLOW_LAN_PUBLISH=1 Allow Docker publishes beyond 127.0.0.1.
   OPENCLAW_FULL_LOCAL_USE_RAW_CONFIG=1   Disable the generated container config overlay.
 `);
 }

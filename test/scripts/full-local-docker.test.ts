@@ -701,6 +701,46 @@ describe("scripts/docker/full-local", () => {
     expect(parseDockerPublishHostPort("[::1]:19890:18789/tcp", "TEST_PUBLISH")).toBe("19890");
   });
 
+  it("rejects full-local LAN publishes unless explicitly allowed", async () => {
+    const runtime = await deriveFullLocalRuntime({
+      config: {
+        gateway: { auth: { token: "gateway-secret" } },
+        models: { providers: { nvidia: { apiKey: "nvidia-secret" } } },
+      },
+      cwd: path.resolve("repo-root"),
+      env: {
+        OPENCLAW_GATEWAY_PUBLISH: "0.0.0.0:19889:18789",
+        OPENCLAW_BRIDGE_PUBLISH: "19890:18790",
+        OPENCLAW_MSTEAMS_PUBLISH_HOST: "192.0.2.10",
+        OPENCLAW_SENTINEL_PUBLISH_HOST: "::",
+      },
+      homeDir: path.resolve("home"),
+      portAvailable: async () => true,
+    });
+
+    expect(validateFullLocalRuntime(runtime.facts, runtime.env)).toContain(
+      "Full-local refuses LAN Docker publish bindings unless OPENCLAW_FULL_LOCAL_ALLOW_LAN_PUBLISH=1: OPENCLAW_GATEWAY_PUBLISH publishes Gateway on 0.0.0.0; OPENCLAW_BRIDGE_PUBLISH publishes Gateway bridge on all interfaces; OPENCLAW_MSTEAMS_PUBLISH_HOST publishes Microsoft Teams bot on 192.0.2.10; OPENCLAW_SENTINEL_PUBLISH_HOST publishes Sentinel on ::.",
+    );
+  });
+
+  it("allows full-local LAN publishes when explicitly opted in", async () => {
+    const runtime = await deriveFullLocalRuntime({
+      config: {
+        gateway: { auth: { token: "gateway-secret" } },
+        models: { providers: { nvidia: { apiKey: "nvidia-secret" } } },
+      },
+      cwd: path.resolve("repo-root"),
+      env: {
+        OPENCLAW_FULL_LOCAL_ALLOW_LAN_PUBLISH: "1",
+        OPENCLAW_GATEWAY_PUBLISH: "0.0.0.0:19889:18789",
+      },
+      homeDir: path.resolve("home"),
+      portAvailable: async () => true,
+    });
+
+    expect(validateFullLocalRuntime(runtime.facts, runtime.env)).toEqual([]);
+  });
+
   it("parses Windows netstat listeners for Docker host publish probes", () => {
     const stdout = `
       Proto  Local Address          Foreign Address        State           PID
@@ -1324,7 +1364,7 @@ describe("scripts/docker/full-local", () => {
     }
   });
 
-  it("classifies default, explicit, and config-marked native desktop agents", () => {
+  it("classifies explicit and config-marked native desktop agents", () => {
     expect(
       resolveFullLocalNativeAgentIds(
         {
@@ -1338,13 +1378,7 @@ describe("scripts/docker/full-local", () => {
         },
         { OPENCLAW_NATIVE_AGENT_IDS: "manual_agent" },
       ),
-    ).toEqual([
-      "command_agent",
-      "future_desktop",
-      "manual_agent",
-      "pipeline_guardian",
-      "uba_god_mode",
-    ]);
+    ).toEqual(["command_agent", "future_desktop", "manual_agent"]);
   });
 
   it("stops a previous Windows-native bridge before Docker sidecars restart", async () => {

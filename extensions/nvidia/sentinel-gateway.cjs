@@ -177,7 +177,7 @@ function fallbackParseDotEnv(src) {
 const parseDotEnv = fallbackParseDotEnv;
 
 function loadDotEnvFile(targetEnv, dotEnvPath, opts = {}) {
-  let raw = "";
+  let raw;
   try {
     raw = fs.readFileSync(dotEnvPath, "utf8");
   } catch {
@@ -331,8 +331,19 @@ const SENTINEL_TOKEN = runtimeEnvValue("OPENCLAW_SENTINEL_TOKEN") || "";
 const SENTINEL_REQUIRE_TOKEN = ["1", "true", "yes", "on"].includes(
   (runtimeEnvValue("OPENCLAW_SENTINEL_REQUIRE_TOKEN") || "").trim().toLowerCase(),
 );
+const SENTINEL_ALLOW_UNAUTHENTICATED_LAN = ["1", "true", "yes", "on"].includes(
+  (runtimeEnvValue("OPENCLAW_SENTINEL_ALLOW_UNAUTHENTICATED_LAN") || "").trim().toLowerCase(),
+);
 const REQUESTED_HOST = runtimeEnvValue("OPENCLAW_SENTINEL_HOST") || "127.0.0.1";
 const HOST = SENTINEL_TOKEN || !SENTINEL_REQUIRE_TOKEN ? REQUESTED_HOST : "127.0.0.1";
+
+function listenHostIsLoopback(host) {
+  const normalized = String(host || "")
+    .trim()
+    .replace(/^\[(.*)\]$/u, "$1")
+    .toLowerCase();
+  return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1";
+}
 
 function resolvePositiveInt(value, fallback) {
   const parsed = Number.parseInt(value || "", 10);
@@ -369,6 +380,18 @@ function err(msg) {
 
 if (SENTINEL_REQUIRE_TOKEN && !SENTINEL_TOKEN) {
   err("OPENCLAW_SENTINEL_TOKEN is required when OPENCLAW_SENTINEL_REQUIRE_TOKEN is enabled.");
+  process.exit(1);
+}
+
+if (
+  !SENTINEL_TOKEN &&
+  !SENTINEL_REQUIRE_TOKEN &&
+  !listenHostIsLoopback(REQUESTED_HOST) &&
+  !SENTINEL_ALLOW_UNAUTHENTICATED_LAN
+) {
+  err(
+    "OPENCLAW_SENTINEL_ALLOW_UNAUTHENTICATED_LAN=1 is required to bind unauthenticated Sentinel beyond loopback.",
+  );
   process.exit(1);
 }
 

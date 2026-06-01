@@ -113,7 +113,9 @@ Before adding a new capability agent, decide these boundaries:
 
 Full-local keeps the Sentinel, Gateway, bridge, and Teams host ports published on `127.0.0.1` by default, requires a Sentinel token for model proxy requests, and leaves health endpoints unauthenticated for orchestration.
 
-Set `OPENCLAW_GATEWAY_PUBLISH=0.0.0.0:18789:18789`, `OPENCLAW_BRIDGE_PUBLISH=0.0.0.0:18790:18790`, and `OPENCLAW_MSTEAMS_PUBLISH=0.0.0.0:3978:3978` only when you intentionally expose those ports beyond loopback. Existing host-only overrides such as `OPENCLAW_GATEWAY_PUBLISH_HOST=0.0.0.0` still work when the full publish mapping is unset. The Windows native bridge only dispatches configured native agents and records host-native dispatch attempts into `proof_events` so native work has the same audit trail as container work.
+Set `OPENCLAW_FULL_LOCAL_ALLOW_LAN_PUBLISH=1` with overrides such as `OPENCLAW_GATEWAY_PUBLISH=0.0.0.0:18789:18789`, `OPENCLAW_BRIDGE_PUBLISH=0.0.0.0:18790:18790`, or `OPENCLAW_MSTEAMS_PUBLISH=0.0.0.0:3978:3978` only when you intentionally expose those ports beyond loopback. Existing host-only overrides such as `OPENCLAW_GATEWAY_PUBLISH_HOST=0.0.0.0` require the same allow flag when the full publish mapping is unset. The Windows native bridge only dispatches explicitly configured native agents and records host-native dispatch attempts into `proof_events` so native work has the same audit trail as container work.
+
+Direct Sentinel runs also refuse unauthenticated non-loopback binds unless `OPENCLAW_SENTINEL_ALLOW_UNAUTHENTICATED_LAN=1` is set. Prefer token-authenticated Sentinel when any network beyond loopback can reach it.
 
 Prefer a narrow native agent first. Add external framework adapters only after the native contract is stable.
 

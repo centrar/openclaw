@@ -139,6 +139,7 @@ The setup script accepts these optional environment variables:
 | `OPENCLAW_BRIDGE_PUBLISH_HOST`             | Legacy host-only bridge publish override used when full publish is unset  |
 | `OPENCLAW_MSTEAMS_PUBLISH`                 | Override the full Docker host publish mapping for the Teams bot port      |
 | `OPENCLAW_MSTEAMS_PUBLISH_HOST`            | Legacy host-only Teams publish override used when full publish is unset   |
+| `OPENCLAW_FULL_LOCAL_ALLOW_LAN_PUBLISH`    | Allow full-local publishes beyond loopback (`1`, `true`, `yes`, `on`)     |
 | `SWARM_BLACKBOARD_DB_PATH`                 | Override the container Blackboard SQLite path for sidecars and agents     |
 | `OPENCLAW_SANDBOX`                         | Opt in to sandbox bootstrap (`1`, `true`, `yes`, `on`)                    |
 | `OPENCLAW_SKIP_ONBOARDING`                 | Skip the interactive onboarding step (`1`, `true`, `yes`, `on`)           |
@@ -230,6 +231,10 @@ docker compose exec openclaw-gateway node dist/index.js health --token "$OPENCLA
 - `lan` (default): host browser and host CLI can reach the published gateway port.
 - `loopback`: only processes inside the container network namespace can reach
   the gateway directly.
+
+Docker publishes stay on `127.0.0.1` by default. Full-local refuses publish
+overrides that bind Gateway, bridge, Teams, or Sentinel to LAN interfaces unless
+`OPENCLAW_FULL_LOCAL_ALLOW_LAN_PUBLISH=1` is set in the same environment.
 
 <Note>
 Use bind mode values in `gateway.bind` (`lan` / `loopback` / `custom` /
