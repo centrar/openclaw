@@ -127,11 +127,21 @@ describe("package-openclaw-for-docker", () => {
       restoreChangelog: async (cwd: string) => {
         calls.push(`restore:${cwd}`);
       },
+      resolveNpmRunnerImpl: ({ npmArgs }: { npmArgs: string[] }) => ({
+        args: npmArgs,
+        command: "npm",
+        shell: false,
+      }),
       runCaptureImpl: async (
         command: string,
         args: string[],
         cwd: string,
-        options: { deferForwardedSignalExit?: boolean },
+        options: {
+          deferForwardedSignalExit?: boolean;
+          env?: NodeJS.ProcessEnv;
+          shell?: boolean;
+          windowsVerbatimArguments?: boolean;
+        },
       ) => {
         calls.push(`${command}:${args.join(" ")}:${cwd}`);
         expect(options.deferForwardedSignalExit).toBe(true);
@@ -144,6 +154,69 @@ describe("package-openclaw-for-docker", () => {
       "prepare:/repo",
       "npm:pack --silent --ignore-scripts --pack-destination /out:/repo",
       "restore:/repo",
+    ]);
+  });
+
+  it("uses the npm runner when packing so Windows npm.cmd is wrapped safely", async () => {
+    const calls: Array<{
+      args: string[];
+      command: string;
+      envFlag: string | undefined;
+      shell: boolean | undefined;
+      windowsVerbatimArguments: boolean | undefined;
+    }> = [];
+    let capturedNpmArgs: string[] = [];
+    const tarball = await packOpenClawPackageForDocker("/repo", "/out", {
+      prepareChangelog: async () => {},
+      restoreChangelog: async () => {},
+      resolveNpmRunnerImpl: ({ npmArgs }: { npmArgs: string[] }) => {
+        capturedNpmArgs = npmArgs;
+        return {
+          args: ["/d", "/s", "/c", '""C:\\Program Files\\nodejs\\npm.cmd" pack"'],
+          command: "cmd.exe",
+          env: { ...process.env, OPENCLAW_TEST_NPM_RUNNER: "1" },
+          shell: false,
+          windowsVerbatimArguments: true,
+        };
+      },
+      runCaptureImpl: async (
+        command: string,
+        args: string[],
+        _cwd: string,
+        options: {
+          env?: NodeJS.ProcessEnv;
+          shell?: boolean;
+          windowsVerbatimArguments?: boolean;
+        },
+      ) => {
+        expect(args.at(-1)).toContain("npm.cmd");
+        expect(capturedNpmArgs).toEqual([
+          "pack",
+          "--silent",
+          "--ignore-scripts",
+          "--pack-destination",
+          "/out",
+        ]);
+        calls.push({
+          args,
+          command,
+          envFlag: options.env?.OPENCLAW_TEST_NPM_RUNNER,
+          shell: options.shell,
+          windowsVerbatimArguments: options.windowsVerbatimArguments,
+        });
+        return "openclaw-2026.5.28.tgz\n";
+      },
+    });
+
+    expect(tarball).toBe(path.join("/out", "openclaw-2026.5.28.tgz"));
+    expect(calls).toEqual([
+      {
+        args: ["/d", "/s", "/c", '""C:\\Program Files\\nodejs\\npm.cmd" pack"'],
+        command: "cmd.exe",
+        envFlag: "1",
+        shell: false,
+        windowsVerbatimArguments: true,
+      },
     ]);
   });
 

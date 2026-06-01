@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveNpmRunner } from "./npm-runner.mjs";
 import { preparePackageChangelog, restorePackageChangelog } from "./package-changelog.mjs";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -98,6 +99,8 @@ function run(command, args, cwd, options = {}) {
       stdio: ["ignore", "pipe", "pipe"],
       env: options.env ?? process.env,
       detached: useProcessGroup,
+      shell: options.shell ?? false,
+      windowsVerbatimArguments: options.windowsVerbatimArguments,
     });
     let timedOut = false;
     let outputLimitExceeded = false;
@@ -260,22 +263,22 @@ export async function packOpenClawPackageForDocker(sourceDir, outputDir, options
   const runCaptureImpl = options.runCaptureImpl ?? runCapture;
   const prepareChangelog = options.prepareChangelog ?? preparePackageChangelog;
   const restoreChangelog = options.restoreChangelog ?? restorePackageChangelog;
+  const npmArgs = ["pack", "--silent", "--ignore-scripts", "--pack-destination", outputDir];
+  const npmRunner = (options.resolveNpmRunnerImpl ?? resolveNpmRunner)({ npmArgs });
   console.error("==> Packing OpenClaw package");
   await prepareChangelog(sourceDir);
   let packOutput;
   try {
-    packOutput = await runCaptureImpl(
-      "npm",
-      ["pack", "--silent", "--ignore-scripts", "--pack-destination", outputDir],
-      sourceDir,
-      {
-        deferForwardedSignalExit: true,
-        timeoutMs: resolveTimeoutMs(
-          "OPENCLAW_DOCKER_PACKAGE_PACK_TIMEOUT_MS",
-          DEFAULT_PACKAGE_PACK_TIMEOUT_MS,
-        ),
-      },
-    );
+    packOutput = await runCaptureImpl(npmRunner.command, npmRunner.args, sourceDir, {
+      deferForwardedSignalExit: true,
+      env: npmRunner.env ?? process.env,
+      shell: npmRunner.shell,
+      timeoutMs: resolveTimeoutMs(
+        "OPENCLAW_DOCKER_PACKAGE_PACK_TIMEOUT_MS",
+        DEFAULT_PACKAGE_PACK_TIMEOUT_MS,
+      ),
+      windowsVerbatimArguments: npmRunner.windowsVerbatimArguments,
+    });
   } finally {
     await restoreChangelog(sourceDir);
   }
