@@ -180,6 +180,7 @@ jobs:
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       OPENCLAW_GATEWAY_TOKEN: agent-os-ci-gateway-token
       OPENCLAW_SENTINEL_TOKEN: agent-os-ci-sentinel-token
+      REQUESTED_DOCKER_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.run_docker == true }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -194,29 +195,39 @@ jobs:
         with:
           install-bun: "false"
 
-      - name: Require Sentinel model secret
+      - name: Check Sentinel model secret
+        id: sentinel-secret
         run: |
           set -euo pipefail
           if [ -z "${NVIDIA_API_KEY:-}" ]; then
-            echo "::error::NVIDIA_API_KEY repository secret is required for Agent OS full-local RC proof."
-            exit 1
+            if [ "${REQUESTED_DOCKER_PROOF}" = "true" ]; then
+              echo "::error::NVIDIA_API_KEY repository secret is required for requested Agent OS full-local RC proof."
+              exit 1
+            fi
+            echo "::notice::NVIDIA_API_KEY repository secret is not configured; skipping Docker full-local proof for this push."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "present=true" >> "$GITHUB_OUTPUT"
 
       - name: Boot full-local
+        if: steps.sentinel-secret.outputs.present == 'true'
         run: node scripts/docker/full-local.mjs up
 
       - name: Run benchmark gauntlet
+        if: steps.sentinel-secret.outputs.present == 'true'
         run: node scripts/docker/full-local.mjs bench
 
       - name: Run golden Agent OS E2E
+        if: steps.sentinel-secret.outputs.present == 'true'
         run: node scripts/docker/full-local.mjs golden
 
       - name: Stop full-local
-        if: always()
+        if: always() && steps.sentinel-secret.outputs.present == 'true'
         run: node scripts/docker/full-local.mjs down
 
       - name: Upload full-local proof
-        if: always()
+        if: always() && steps.sentinel-secret.outputs.present == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: agent-os-full-local-proof

@@ -165,7 +165,7 @@ The `Agent OS RC` workflow is the repeatable branch gate. It runs:
 - package build, tarball integrity check, tarball inventory check, and install-from-tarball smoke
 - Docker full-local boot, benchmark, golden E2E, and cleanup
 
-The Docker proof job requires the repository secret `NVIDIA_API_KEY`. The workflow sets local-only Gateway and Sentinel tokens for CI and refuses to continue if the NVIDIA secret is missing.
+The Docker proof job requires the repository secret `NVIDIA_API_KEY`. On normal branch pushes, the job records a notice and skips Docker proof when the secret is not configured. On a manual RC run with `run_docker=true`, it fails closed if the secret is missing. The workflow sets local-only Gateway and Sentinel tokens for CI.
 
 Run it manually when preparing an RC:
 
