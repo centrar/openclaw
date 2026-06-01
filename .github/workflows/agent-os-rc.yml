@@ -1,0 +1,227 @@
+name: Agent OS RC
+
+on:
+  push:
+    branches:
+      - codex/agent-os-alpha
+      - "agent-os/**"
+  pull_request:
+    paths:
+      - ".github/workflows/agent-os-rc.yml"
+      - "docs/start/agent-os-alpha.md"
+      - "docs/tools/capability-agents.md"
+      - "docs/reference/agent-os-contract.md"
+      - "docs/docs.json"
+      - "scripts/agents/capability-agent-profile.mjs"
+      - "scripts/agents/capability-proof-kit.mjs"
+      - "scripts/docker/**"
+      - "scripts/lib/agent-os-contracts.cjs"
+      - "scripts/lib/proof-events.cjs"
+      - "test/scripts/capability-agent-profile.test.ts"
+      - "test/scripts/capability-proof-kit.test.ts"
+      - "test/scripts/agent-os-contracts.test.ts"
+      - "test/scripts/proof-events.test.ts"
+      - "test/scripts/full-local-docker.test.ts"
+      - "test/scripts/package-openclaw-for-docker.test.ts"
+      - "extensions/nvidia/sentinel-gateway.test.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+    inputs:
+      run_package:
+        description: Build and verify the release-candidate package tarball
+        required: false
+        default: true
+        type: boolean
+      run_docker:
+        description: Boot full-local and run benchmark plus golden E2E
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ format('{0}-{1}', github.workflow, github.ref) }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  contracts:
+    name: Contracts, docs, and security tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          submodules: false
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          install-bun: "false"
+
+      - name: Check Agent OS docs are indexed
+        run: |
+          set -euo pipefail
+          pnpm docs:list | tee /tmp/openclaw-docs-list.txt
+          grep -F "start/agent-os-alpha.md" /tmp/openclaw-docs-list.txt
+          grep -F "tools/capability-agents.md" /tmp/openclaw-docs-list.txt
+          grep -F "reference/agent-os-contract.md" /tmp/openclaw-docs-list.txt
+
+      - name: Syntax check release-candidate scripts
+        run: |
+          set -euo pipefail
+          node --check scripts/docker/full-local.mjs
+          node --check scripts/package-openclaw-for-docker.mjs
+
+      - name: Run Agent OS contract and security tests
+        run: |
+          set -euo pipefail
+          node scripts/run-vitest.mjs \
+            test/scripts/package-openclaw-for-docker.test.ts \
+            test/scripts/full-local-docker.test.ts \
+            test/scripts/agent-os-contracts.test.ts \
+            test/scripts/proof-events.test.ts \
+            test/scripts/capability-agent-profile.test.ts \
+            test/scripts/capability-proof-kit.test.ts \
+            extensions/nvidia/sentinel-gateway.test.ts
+
+  package:
+    name: Package tarball proof
+    if: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.run_package == true) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          submodules: false
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          install-bun: "false"
+
+      - name: Build and check package tarball
+        run: |
+          set -euo pipefail
+          output_dir=".artifacts/agent-os-rc-package"
+          node scripts/package-openclaw-for-docker.mjs --output-dir "$output_dir"
+          tarball="$(find "$output_dir" -maxdepth 1 -name 'openclaw-*.tgz' | sort | tail -n 1)"
+          if [ -z "$tarball" ]; then
+            echo "::error::missing package tarball"
+            exit 1
+          fi
+          echo "tarball=$tarball" >> "$GITHUB_ENV"
+
+      - name: Check Agent OS tarball inventory
+        run: |
+          set -euo pipefail
+          tar -tf "$tarball" > .artifacts/agent-os-rc-package/tarball-files.txt
+          required=(
+            "package/scripts/docker/full-local.mjs"
+            "package/scripts/docker/sidecars/signal-hub.cjs"
+            "package/scripts/docker/sidecars/blackboard-cli.cjs"
+            "package/scripts/docker/sidecars/node-mcp-launcher.cjs"
+            "package/scripts/docker/sidecars/python-mcp-launcher.cjs"
+            "package/scripts/lib/agent-os-contracts.cjs"
+            "package/scripts/lib/proof-events.cjs"
+            "package/scripts/agents/capability-agent-profile.mjs"
+            "package/scripts/agents/capability-proof-kit.mjs"
+            "package/docker-compose.sidecars.yml"
+            "package/start_windows_node.bat"
+            "package/docs/start/agent-os-alpha.md"
+            "package/docs/reference/agent-os-contract.md"
+            "package/docs/tools/capability-agents.md"
+          )
+          for entry in "${required[@]}"; do
+            grep -Fx "$entry" .artifacts/agent-os-rc-package/tarball-files.txt
+          done
+
+      - name: Install tarball and smoke CLI
+        run: |
+          set -euo pipefail
+          prefix="$(mktemp -d)"
+          npm install "$tarball" --prefix "$prefix" --no-audit --no-fund --loglevel=error
+          pkg="$prefix/node_modules/openclaw"
+          node "$pkg/openclaw.mjs" --version
+          test -f "$pkg/scripts/docker/full-local.mjs"
+          test -f "$pkg/scripts/lib/agent-os-contracts.cjs"
+          test -f "$pkg/scripts/agents/capability-agent-profile.mjs"
+          test -f "$pkg/docs/start/agent-os-alpha.md"
+
+      - name: Upload package proof
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-os-rc-package
+          path: |
+            .artifacts/agent-os-rc-package/*.tgz
+            .artifacts/agent-os-rc-package/tarball-files.txt
+          if-no-files-found: ignore
+
+  docker:
+    name: Full-local benchmark and golden E2E
+    if: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.run_docker == true) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      OPENCLAW_GATEWAY_TOKEN: agent-os-ci-gateway-token
+      OPENCLAW_SENTINEL_TOKEN: agent-os-ci-sentinel-token
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          submodules: false
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          install-bun: "false"
+
+      - name: Require Sentinel model secret
+        run: |
+          set -euo pipefail
+          if [ -z "${NVIDIA_API_KEY:-}" ]; then
+            echo "::error::NVIDIA_API_KEY repository secret is required for Agent OS full-local RC proof."
+            exit 1
+          fi
+
+      - name: Boot full-local
+        run: node scripts/docker/full-local.mjs up
+
+      - name: Run benchmark gauntlet
+        run: node scripts/docker/full-local.mjs bench
+
+      - name: Run golden Agent OS E2E
+        run: node scripts/docker/full-local.mjs golden
+
+      - name: Stop full-local
+        if: always()
+        run: node scripts/docker/full-local.mjs down
+
+      - name: Upload full-local proof
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-os-full-local-proof
+          path: |
+            .artifacts/full-local-proof.json
+            .artifacts/full-local-benchmark.json
+            .artifacts/full-local-agent-os-golden-e2e.json
+          if-no-files-found: ignore

@@ -1009,6 +1009,7 @@
               {
                 "group": "Guides",
                 "pages": [
+                  "start/agent-os-alpha",
                   "start/openclaw",
                   "start/wizard-cli-reference",
                   "start/wizard-cli-automation"
