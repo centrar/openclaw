@@ -4303,44 +4303,60 @@ async function runSentinelModelProof(runtime, options = {}) {
     model,
     ...(model.startsWith("nvidia/") ? [model.slice("nvidia/".length)] : []),
   ];
-  const since = new Date(Date.now() - 5_000).toISOString();
-  const result = runGatewayOpenClawWithRetries(
-    runtime,
-    ["infer", "model", "run", "--gateway", "--model", model, "--prompt", prompt, "--json"],
-    {
-      attempts: 2,
+  const proofAttempts = Math.max(
+    1,
+    parsePositiveInteger(runtime.env.OPENCLAW_FULL_LOCAL_SENTINEL_PROOF_ATTEMPTS, 3),
+  );
+  let fullProof = null;
+  for (let proofAttempt = 1; proofAttempt <= proofAttempts; proofAttempt += 1) {
+    const since = new Date(Date.now() - 5_000).toISOString();
+    const result = runGatewayOpenClawWithRetries(
+      runtime,
+      ["infer", "model", "run", "--gateway", "--model", model, "--prompt", prompt, "--json"],
+      {
+        attempts: 2,
+        capture: true,
+        cwd,
+        timeoutMs: parsePositiveInteger(
+          runtime.env.OPENCLAW_FULL_LOCAL_SENTINEL_TIMEOUT_MS,
+          240_000,
+        ),
+      },
+    );
+    const body = extractJson(result.stdout);
+    const logs = runDocker(buildComposeArgs(["logs", "--since", since, "openclaw-sentinel"]), {
       capture: true,
       cwd,
-      timeoutMs: parsePositiveInteger(runtime.env.OPENCLAW_FULL_LOCAL_SENTINEL_TIMEOUT_MS, 240_000),
-    },
-  );
-  const body = extractJson(result.stdout);
-  const logs = runDocker(buildComposeArgs(["logs", "--since", since, "openclaw-sentinel"]), {
-    capture: true,
-    cwd,
-    env: runtime.env,
-    timeoutMs: 30_000,
-  });
-  const routed = sentinelModelNames.some((modelName) =>
-    logs.stdout.includes(`Routing ${modelName} via cached Sentinel key.`),
-  );
-  const outputText = Array.isArray(body?.outputs) ? (body.outputs[0]?.text ?? "") : "";
-  const proof = {
-    gateway: {
-      model: body?.model ?? null,
-      ok: result.ok && body?.ok === true,
-      outputContainsSmokeToken: String(outputText).includes("sentinel-smoke-ok"),
-      provider: body?.provider ?? null,
-      stderr: result.ok ? "" : result.stderr.trim(),
-    },
-    generatedAt: new Date().toISOString(),
-    model,
-    sentinel: {
-      routed,
-      sentinelModelNames,
-    },
-  };
-  const fullProof = { ...proof, ok: evaluateSentinelModelProof(proof) };
+      env: runtime.env,
+      timeoutMs: 30_000,
+    });
+    const routed = sentinelModelNames.some((modelName) =>
+      logs.stdout.includes(`Routing ${modelName} via cached Sentinel key.`),
+    );
+    const outputText = Array.isArray(body?.outputs) ? (body.outputs[0]?.text ?? "") : "";
+    const proof = {
+      gateway: {
+        model: body?.model ?? null,
+        ok: result.ok && body?.ok === true,
+        outputContainsSmokeToken: String(outputText).includes("sentinel-smoke-ok"),
+        provider: body?.provider ?? null,
+        stderr: result.ok ? "" : result.stderr.trim(),
+      },
+      generatedAt: new Date().toISOString(),
+      model,
+      proofAttempt,
+      proofAttempts,
+      sentinel: {
+        routed,
+        sentinelModelNames,
+      },
+    };
+    fullProof = { ...proof, ok: evaluateSentinelModelProof(proof) };
+    if (fullProof.ok || proofAttempt === proofAttempts) {
+      break;
+    }
+    sleepSync(5_000);
+  }
   writeJsonArtifact(cwd, artifactPath, fullProof);
   return { ...fullProof, artifactPath };
 }
