@@ -33,6 +33,7 @@ import {
   evaluateSentinelModelProof,
   fetchJsonWithRetries,
   filterStaleFullLocalSmokeTickets,
+  gatewayCommandShouldRetry,
   parseDockerPublishHostPort,
   parseWindowsNetstatListeningPorts,
   parseComposePublishedPort,
@@ -3236,6 +3237,25 @@ describe("scripts/docker/full-local", () => {
       provider: "gemini",
       sync: { watch: false },
     });
+  });
+
+  it("retries transient Gateway database and close races", () => {
+    expect(
+      gatewayCommandShouldRetry({
+        ok: false,
+        status: 1,
+        stderr: "[openclaw] Reason: database is not open",
+        stdout: "",
+      }),
+    ).toBe(true);
+    expect(
+      gatewayCommandShouldRetry({
+        ok: false,
+        status: 1,
+        stderr: "gateway closed (1000 normal closure): no close reason",
+        stdout: "",
+      }),
+    ).toBe(true);
   });
 
   it("expands home-relative configured paths before writing the container overlay", () => {

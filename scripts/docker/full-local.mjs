@@ -3224,13 +3224,15 @@ function runGatewayOpenClaw(runtime, args, options = {}) {
   return runGatewayNode(runtime, ["node", "openclaw.mjs", ...args], options);
 }
 
-function gatewayCommandShouldRetry(result) {
+export function gatewayCommandShouldRetry(result) {
   if (!result.ok && result.status === null) {
     return true;
   }
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.toLowerCase();
   return (
+    output.includes("database is not open") ||
     output.includes("gateway timeout") ||
+    output.includes("gateway closed") ||
     output.includes("econnreset") ||
     output.includes("eperm: operation not permitted, fchmod")
   );
@@ -4409,9 +4411,10 @@ async function runMemoryObsidianProof(runtime, options = {}) {
     runtime,
     ["memory", "search", nonce, "--agent", "main", "--json", "--max-results", "5"],
     {
-      attempts: 3,
+      attempts: 5,
       capture: true,
       cwd,
+      retryDelayMs: 5_000,
       timeoutMs: 120_000,
     },
   );
