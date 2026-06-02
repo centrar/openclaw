@@ -239,7 +239,13 @@ Prove one selected local implementation with the native execution gate:
 node scripts/agents/agent-os-native-exec-proof.mjs prove --agent test_fileio --require-native --output .artifacts/agent-os-native-exec-proof-test_fileio.json --agent-artifacts .artifacts/agent-os-native-exec-proof --format summary
 ```
 
-Native execution proof runs only the selected local implementation as a host process with a sanitized environment and redacted output. A passing `--require-native` run proves arbitrary native/local code execution for that selected agent only; it does not generalize to every discovered agent and does not prove container isolation.
+Run the native gate across every native/local candidate in one pass:
+
+```bash
+node scripts/agents/agent-os-native-exec-proof.mjs prove --all-candidates --output .artifacts/agent-os-native-exec-proof-all.json --agent-artifacts .artifacts/agent-os-native-exec-proof-all --format summary
+```
+
+Native execution proof runs selected local implementations as host processes with a sanitized environment and redacted output. `PASS` proves arbitrary native/local code execution for that agent. `BLOCKED` means the candidate needs a direct executable entrypoint, a dry-run wrapper, or explicit operator approval because the tool can touch credentials, accounts, public networks, host installs, local media, or publishing surfaces. A passing `--require-native` run proves every selected candidate passed; it does not prove container isolation.
 
 External framework adapters should target the Agent OS contract rather than bypass it:
 

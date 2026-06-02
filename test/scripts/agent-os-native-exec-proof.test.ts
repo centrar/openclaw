@@ -23,15 +23,34 @@ function createFixture() {
   const repoRoot = path.join(root, "repo");
   const openclawHome = path.join(root, ".openclaw");
   const toolPath = path.join(root, "tools", "safe-tool.mjs");
+  const networkToolPath = path.join(root, "tools", "probe.py");
+  const riskyToolPath = path.join(root, "tools", "upload-token.py");
   writeText(
     toolPath,
     "console.log(JSON.stringify({ ok: true, envTokenVisible: process.env.SECRET_TOKEN || null }));\n",
   );
+  writeText(
+    networkToolPath,
+    'import requests\nrequests.post("https://example.invalid", timeout=1)\n',
+  );
+  writeText(riskyToolPath, 'ACCESS_TOKEN = "fake-token-for-test"\nprint("should not run")\n');
   writeJson(path.join(openclawHome, "agents_registry.json"), {
     agents: [
       {
         id: "safe_tool",
         path: toolPath,
+        status: "unlisted",
+        type: "python_tool",
+      },
+      {
+        id: "network_tool",
+        path: networkToolPath,
+        status: "unlisted",
+        type: "python_tool",
+      },
+      {
+        id: "risky_tool",
+        path: riskyToolPath,
         status: "unlisted",
         type: "python_tool",
       },
@@ -94,6 +113,64 @@ describe("agent os native execution proof", () => {
       expect(existsSync(result.artifactContract.path)).toBe(true);
     } finally {
       delete process.env.SECRET_TOKEN;
+      rmSync(fixture.root, { force: true, recursive: true });
+    }
+  });
+
+  it("batch-proves safe candidates and blocks risky local tools", async () => {
+    const fixture = createFixture();
+    try {
+      const outputPath = path.join(fixture.root, "native-proof-all.json");
+      const agentArtifactDir = path.join(fixture.root, "agent-artifacts-all");
+      const proof = await createNativeExecutionProof({
+        agentArtifactDir,
+        allCandidates: true,
+        generatedAt: "2026-06-02T00:00:00.000Z",
+        openclawHome: fixture.openclawHome,
+        outputPath,
+        repoRoot: fixture.repoRoot,
+        runId: "native-run-all",
+      });
+      expect(proof.summary).toMatchObject({
+        agentCodeExecutionProven: 1,
+        blocked: 2,
+        failed: 0,
+        selected: 3,
+      });
+      expect(proof.proofClaim).toMatchObject({
+        allSelectedAgentCodeExecutionProven: false,
+        arbitraryAgentCodeExecution: true,
+      });
+      const safeResult = proof.results.find((result) => result.id === "safe_tool");
+      const networkResult = proof.results.find((result) => result.id === "network_tool");
+      const riskyResult = proof.results.find((result) => result.id === "risky_tool");
+      expect(safeResult).toMatchObject({
+        agentCodeExecutionProven: true,
+        blocked: false,
+        proofEvent: { status: "PASS" },
+        ticket: { status: "DONE" },
+      });
+      expect(riskyResult).toMatchObject({
+        agentCodeExecutionProven: false,
+        blocked: true,
+        proofEvent: { status: "WARN" },
+        ticket: { status: "BLOCKED" },
+      });
+      expect(riskyResult?.blockedReasons).toContain(
+        "risky tool name requires explicit approval or dry-run wrapper",
+      );
+      expect(networkResult).toMatchObject({
+        agentCodeExecutionProven: false,
+        blocked: true,
+        blockedReasons: ["external network side effect"],
+        proofEvent: { status: "WARN" },
+        ticket: { status: "BLOCKED" },
+      });
+      const riskyArtifact = JSON.parse(
+        readFileSync(path.join(agentArtifactDir, "risky_tool.json"), "utf8"),
+      );
+      expect(riskyArtifact.nativeExecution.stdout).toBe("");
+    } finally {
       rmSync(fixture.root, { force: true, recursive: true });
     }
   });

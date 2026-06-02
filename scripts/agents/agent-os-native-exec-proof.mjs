@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -21,6 +21,39 @@ const DEFAULT_OUTPUT_PATH = path.join(".artifacts", "agent-os-native-exec-proof.
 const DEFAULT_AGENT_ARTIFACT_DIR = path.join(".artifacts", "agent-os-native-exec-proof");
 const DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_CAPTURE_BYTES = 64_000;
+const NATIVE_EXECUTION_ROUTES = new Set([
+  "tool-adapter",
+  "filesystem-agent-adapter",
+  "workspace-agent-adapter",
+  "business-agent-supervisor",
+]);
+const LOW_RISK_AUTO_AGENT_IDS = new Set(["test_fileio", "test_fileio2", "test_hosts"]);
+const RISK_PATTERNS = [
+  { pattern: /\b(?:EAA|sk-)[A-Za-z0-9_-]{24,}\b/u, reason: "hardcoded credential-like token" },
+  {
+    pattern: /\b(access_token|api[_-]?key|secret|password|client_secret)\b\s*=/iu,
+    reason: "credential assignment",
+  },
+  { pattern: /\byt_token\.pickle\b/iu, reason: "YouTube credential state access" },
+  {
+    pattern: /\brequests\.(?:get|post|put)\b|https?:\/\//iu,
+    reason: "external network side effect",
+  },
+  { pattern: /\bngrok\b|public_url/iu, reason: "public tunnel side effect" },
+  { pattern: /\btest_reel\.mp4\b/iu, reason: "local media file access" },
+  {
+    pattern: /\bmedia_publish\b|videos\(\)\.insert|published["']?\s*:/iu,
+    reason: "publishing side effect",
+  },
+  {
+    pattern: /\bwebbrowser\.open\b|selenium|playwright/iu,
+    reason: "interactive browser/account side effect",
+  },
+  { pattern: /\btaskkill\b|subprocess\.Popen/iu, reason: "host process mutation" },
+  { pattern: /\bC:\\ffmpeg\b|ffmpeg_download\.zip/iu, reason: "host install or media mutation" },
+];
+const RISKY_TOOL_NAME_PATTERN =
+  /(?:account|auth|container|convert|debug|diag|ffmpeg|fb|ig|media|ngrok|page|patch|perms|publish|slicer|token|upload|wrapper|youtube)/iu;
 
 function nowIso() {
   return new Date().toISOString();
@@ -142,6 +175,39 @@ function executablePathForAgent(agent) {
   return fileRef?.path || null;
 }
 
+function nativeExecutionCandidate(agent) {
+  return NATIVE_EXECUTION_ROUTES.has(agent.route);
+}
+
+function safetyAssessment(agent, executablePath, options) {
+  if (!nativeExecutionCandidate(agent)) {
+    return { ok: false, reasons: ["agent route is not a native execution candidate"] };
+  }
+  if (!executablePath) {
+    return { ok: false, reasons: ["no direct executable path reference"] };
+  }
+  if (options.allowRisky || LOW_RISK_AUTO_AGENT_IDS.has(agent.id)) {
+    return { ok: true, reasons: [] };
+  }
+  const riskyToolName = RISKY_TOOL_NAME_PATTERN.test(path.basename(executablePath));
+  let text = "";
+  try {
+    text = readFileSync(executablePath, "utf8");
+  } catch {
+    return { ok: false, reasons: ["cannot read executable for safety scan"] };
+  }
+  const reasons = [];
+  if (riskyToolName) {
+    reasons.push("risky tool name requires explicit approval or dry-run wrapper");
+  }
+  for (const rule of RISK_PATTERNS) {
+    if (rule.pattern.test(text)) {
+      reasons.push(rule.reason);
+    }
+  }
+  return reasons.length > 0 ? { ok: false, reasons } : { ok: true, reasons: [] };
+}
+
 function runProcess(commandSpec, options) {
   return new Promise((resolve) => {
     const startedAt = nowIso();
@@ -201,18 +267,16 @@ function selectAgent(plan, agentId) {
   return agent;
 }
 
-function nativeExecutionCandidate(agent) {
-  return [
-    "tool-adapter",
-    "filesystem-agent-adapter",
-    "workspace-agent-adapter",
-    "business-agent-supervisor",
-  ].includes(agent.route);
+function selectAllCandidates(plan) {
+  return plan.agents.filter(
+    (agent) => nativeExecutionCandidate(agent) && (agent.pathRefs || []).some((ref) => ref.exists),
+  );
 }
 
 async function resultForAgent(agent, options) {
   const executablePath = executablePathForAgent(agent);
-  const runnable = nativeExecutionCandidate(agent) && executablePath !== null;
+  const safety = safetyAssessment(agent, executablePath, options);
+  const runnable = safety.ok && executablePath !== null;
   const commandSpec = runnable ? commandForPath(executablePath, options.args) : null;
   const execution = runnable
     ? await runProcess(commandSpec, {
@@ -233,7 +297,9 @@ async function resultForAgent(agent, options) {
         timedOut: false,
       };
   const agentCodeExecutionProven = runnable && execution.exitCode === 0 && !execution.timedOut;
-  const status = agentCodeExecutionProven ? "PASS" : "FAIL";
+  const blocked = !safety.ok || executablePath === null;
+  const status = agentCodeExecutionProven ? "PASS" : blocked ? "WARN" : "FAIL";
+  const ticketStatus = agentCodeExecutionProven ? "DONE" : blocked ? "BLOCKED" : "FAILED";
   const ticketId = `native-exec-${stableHash(agent.id).slice(0, 12)}`;
   const runId = options.runId;
   const artifactPath = path.join(options.agentArtifactDir, `${slug(agent.id)}.json`);
@@ -242,11 +308,12 @@ async function resultForAgent(agent, options) {
     input: {
       agentId: agent.id,
       args: options.args,
+      blockedReasons: safety.reasons,
       executablePath,
       route: agent.route,
       sanitizedEnvironment: !options.inheritEnv,
     },
-    status: agentCodeExecutionProven ? "DONE" : "FAILED",
+    status: ticketStatus,
     targetAgent: agent.id,
     title: `Native execution proof for ${agent.id}`,
     type: "native_execution_proof",
@@ -270,6 +337,8 @@ async function resultForAgent(agent, options) {
     kind: "agent-native-execution-proof-card",
     nativeExecution: {
       agentCodeExecutionProven,
+      blocked,
+      blockedReasons: safety.reasons,
       durationMs: execution.durationMs,
       error: execution.error,
       exitCode: execution.exitCode,
@@ -300,6 +369,8 @@ async function resultForAgent(agent, options) {
     component: "agent-os-native-exec-proof",
     data: {
       agentCodeExecutionProven,
+      blocked,
+      blockedReasons: safety.reasons,
       durationMs: execution.durationMs,
       executablePath,
       exitCode: execution.exitCode,
@@ -316,6 +387,8 @@ async function resultForAgent(agent, options) {
   return {
     agentCodeExecutionProven,
     artifactContract,
+    blocked,
+    blockedReasons: safety.reasons,
     executablePath,
     exitCode: execution.exitCode,
     id: agent.id,
@@ -331,24 +404,37 @@ export async function createNativeExecutionProof(options = {}) {
   const repoRoot = normalizePath(options.repoRoot || process.cwd());
   const openclawHome = normalizePath(options.openclawHome || path.join(os.homedir(), ".openclaw"));
   const plan = options.plan || buildAgentManagementPlan({ openclawHome, repoRoot });
-  const agent = selectAgent(plan, options.agentId);
+  const agents = options.allCandidates
+    ? selectAllCandidates(plan)
+    : [selectAgent(plan, options.agentId)];
   const runId =
-    options.runId || `native-exec-${stableHash({ agentId: agent.id, generatedAt }).slice(0, 12)}`;
+    options.runId ||
+    `native-exec-${stableHash({
+      agentIds: agents.map((agent) => agent.id),
+      generatedAt,
+    }).slice(0, 12)}`;
   const outputPath = path.resolve(options.outputPath || DEFAULT_OUTPUT_PATH);
   const agentArtifactDir = path.resolve(options.agentArtifactDir || DEFAULT_AGENT_ARTIFACT_DIR);
   ensureDir(agentArtifactDir);
-  const result = await resultForAgent(agent, {
-    agentArtifactDir,
-    args: options.args || [],
-    generatedAt,
-    inheritEnv: options.inheritEnv === true,
-    runId,
-    timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS,
-  });
+  const results = [];
+  for (const agent of agents) {
+    results.push(
+      await resultForAgent(agent, {
+        agentArtifactDir,
+        allowRisky: options.allowRisky === true,
+        args: options.args || [],
+        generatedAt,
+        inheritEnv: options.inheritEnv === true,
+        runId,
+        timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS,
+      }),
+    );
+  }
   const summary = {
-    agentCodeExecutionProven: result.agentCodeExecutionProven ? 1 : 0,
-    failed: result.agentCodeExecutionProven ? 0 : 1,
-    selected: 1,
+    agentCodeExecutionProven: results.filter((result) => result.agentCodeExecutionProven).length,
+    blocked: results.filter((result) => result.blocked).length,
+    failed: results.filter((result) => !result.agentCodeExecutionProven && !result.blocked).length,
+    selected: results.length,
   };
   const artifactContract = assertAgentOsArtifactContract({
     createdBy: "agent-os-native-exec-proof",
@@ -363,12 +449,13 @@ export async function createNativeExecutionProof(options = {}) {
     artifactContract,
     generatedAt,
     proofClaim: {
-      allSelectedAgentCodeExecutionProven: result.agentCodeExecutionProven,
-      arbitraryAgentCodeExecution: result.agentCodeExecutionProven,
+      allSelectedAgentCodeExecutionProven:
+        summary.agentCodeExecutionProven === summary.selected && summary.selected > 0,
+      arbitraryAgentCodeExecution: summary.agentCodeExecutionProven > 0,
       hostProcessExecution: true,
-      note: "This proof is per selected agent. It executes one local implementation and does not generalize to every discovered agent.",
+      note: "This proof executes selected local implementations when they pass the safety gate. BLOCKED results need explicit dry-run wrappers or operator-approved risky execution before they can count as native code execution proof.",
     },
-    results: [result],
+    results,
     roots: plan.roots,
     runId,
     schemaVersion: AGENT_OS_NATIVE_EXEC_PROOF_SCHEMA_VERSION,
@@ -383,6 +470,8 @@ function parseArgs(argv) {
     agentArtifactDir: DEFAULT_AGENT_ARTIFACT_DIR,
     agentId: null,
     args: [],
+    allCandidates: false,
+    allowRisky: false,
     command,
     format: "summary",
     inheritEnv: false,
@@ -401,6 +490,8 @@ function parseArgs(argv) {
       }
       options.agentId = value;
       index += 1;
+    } else if (arg === "--all-candidates") {
+      options.allCandidates = true;
     } else if (arg === "--repo") {
       const value = args[index + 1];
       if (!value) {
@@ -452,29 +543,38 @@ function parseArgs(argv) {
       index += 1;
     } else if (arg === "--inherit-env") {
       options.inheritEnv = true;
+    } else if (arg === "--allow-risky") {
+      options.allowRisky = true;
     } else if (arg === "--require-native") {
       options.requireNative = true;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
-  if (!options.agentId) {
+  if (!options.allCandidates && !options.agentId) {
     throw new Error("--agent is required");
   }
   return options;
 }
 
 function formatSummary(proof) {
-  const result = proof.results[0];
-  return [
-    `Native execution proof: ${result.id}`,
-    `Agent code execution proven: ${result.agentCodeExecutionProven ? "yes" : "no"}`,
-    `Route: ${result.route}`,
-    `Exit code: ${result.exitCode}`,
-    `Timed out: ${result.timedOut ? "yes" : "no"}`,
-    `Artifact: ${result.artifactContract.path}`,
+  const lines = [
+    `Native execution proof: ${proof.summary.selected} selected agents`,
+    `Agent code execution proven: ${proof.summary.agentCodeExecutionProven}`,
+    `Blocked: ${proof.summary.blocked}`,
+    `Failed: ${proof.summary.failed}`,
     "",
-  ].join("\n");
+    "Results:",
+  ];
+  for (const result of proof.results) {
+    lines.push(
+      `- ${result.id}: ${
+        result.agentCodeExecutionProven ? "PASS" : result.blocked ? "BLOCKED" : "FAIL"
+      } (${result.route}, exit=${result.exitCode}, timedOut=${result.timedOut ? "yes" : "no"})`,
+    );
+  }
+  lines.push("", `Artifact: ${proof.artifactContract.path}`, "");
+  return lines.join("\n");
 }
 
 export async function runNativeExecutionProofCli(argv = process.argv.slice(2)) {
@@ -485,6 +585,8 @@ export async function runNativeExecutionProofCli(argv = process.argv.slice(2)) {
   const proof = await createNativeExecutionProof({
     agentArtifactDir: normalizePath(options.agentArtifactDir),
     agentId: options.agentId,
+    allCandidates: options.allCandidates,
+    allowRisky: options.allowRisky,
     args: options.args,
     inheritEnv: options.inheritEnv,
     openclawHome: normalizePath(options.openclawHome),

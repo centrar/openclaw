@@ -57,7 +57,13 @@ Prove arbitrary native/local code execution one selected agent at a time:
 node scripts/agents/agent-os-native-exec-proof.mjs prove --agent test_fileio --require-native --output .artifacts/agent-os-native-exec-proof-test_fileio.json --agent-artifacts .artifacts/agent-os-native-exec-proof --format summary
 ```
 
-Native execution proof runs the selected local implementation as a host process with a sanitized environment and redacted output. It proves `agentCodeExecutionProven: true` only for that selected agent; keep credential-bearing or externally mutating tools behind explicit dry-run wrappers before running this gate.
+Run the same gate across all native/local candidates:
+
+```bash
+node scripts/agents/agent-os-native-exec-proof.mjs prove --all-candidates --output .artifacts/agent-os-native-exec-proof-all.json --agent-artifacts .artifacts/agent-os-native-exec-proof-all --format summary
+```
+
+Native execution proof runs selected local implementations as host processes with a sanitized environment and redacted output. It proves `agentCodeExecutionProven: true` only for agents that return `PASS`. `BLOCKED` candidates need direct executable entrypoints, dry-run wrappers, or explicit operator approval before they can be counted as native code execution proof, especially when they touch credentials, accounts, public networks, host installs, local media, or publishing surfaces.
 
 Check whether the profiles are installed in your OpenClaw config:
 
