@@ -129,14 +129,16 @@ function isCliContainerLocalEquivalent(params: {
     params.connectParams.client.id === GATEWAY_CLIENT_IDS.CLI &&
     params.connectParams.client.mode === GATEWAY_CLIENT_MODES.CLI;
   const usesSharedSecretAuth = params.authMethod === "token" || params.authMethod === "password";
+  const requestHostName = resolveHostName(params.requestHost);
+  const isComposeGatewayHost = requestHostName === "openclaw-gateway";
   return (
     isCliClient &&
     params.sharedAuthOk &&
     usesSharedSecretAuth &&
     !params.hasProxyHeaders &&
     !params.hasBrowserOriginHeader &&
-    isLoopbackAddress(params.remoteAddress) &&
-    isPrivateOrLoopbackHost(resolveHostName(params.requestHost))
+    isPrivateOrLoopbackAddress(params.remoteAddress) &&
+    (isPrivateOrLoopbackHost(requestHostName) || isComposeGatewayHost)
   );
 }
 

@@ -349,9 +349,33 @@ describe("handshake auth helpers", () => {
       resolvePairingLocality({
         connectParams,
         isLocalClient: false,
+        requestHost: "openclaw-gateway:18789",
+        remoteAddress: "172.18.0.5",
+        hasProxyHeaders: false,
+        hasBrowserOriginHeader: false,
+        sharedAuthOk: true,
+        authMethod: "token",
+      }),
+    ).toBe("cli_container_local");
+    expect(
+      resolvePairingLocality({
+        connectParams,
+        isLocalClient: false,
         requestHost: "172.17.0.2:18789",
         remoteAddress: "127.0.0.1",
         hasProxyHeaders: true,
+        hasBrowserOriginHeader: false,
+        sharedAuthOk: true,
+        authMethod: "token",
+      }),
+    ).toBe("remote");
+    expect(
+      resolvePairingLocality({
+        connectParams,
+        isLocalClient: false,
+        requestHost: "openclaw-gateway:18789",
+        remoteAddress: "203.0.113.20",
+        hasProxyHeaders: false,
         hasBrowserOriginHeader: false,
         sharedAuthOk: true,
         authMethod: "token",
