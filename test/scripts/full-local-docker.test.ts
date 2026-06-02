@@ -2836,6 +2836,9 @@ describe("scripts/docker/full-local", () => {
       "/app/scripts/lib/proof-events.cjs ./scripts/lib/proof-events.cjs",
     );
     expect(readFileSync("Dockerfile", "utf8")).toContain(
+      "/app/scripts/lib/secret-redaction.cjs ./scripts/lib/secret-redaction.cjs",
+    );
+    expect(readFileSync("Dockerfile", "utf8")).toContain(
       "/app/scripts/lib/agent-os-contracts.cjs ./scripts/lib/agent-os-contracts.cjs",
     );
     expect(signalHub).toMatch(/agentEmbeddings\.length === 0[\s\S]+type-fallback/);

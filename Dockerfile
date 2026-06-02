@@ -192,6 +192,7 @@ COPY --from=runtime-assets --chown=node:node /app/qa ./qa
 COPY --from=runtime-assets --chown=node:node /app/scripts/docker/sidecars ./scripts/docker/sidecars
 COPY --from=runtime-assets --chown=node:node /app/scripts/lib/agent-os-contracts.cjs ./scripts/lib/agent-os-contracts.cjs
 COPY --from=runtime-assets --chown=node:node /app/scripts/lib/proof-events.cjs ./scripts/lib/proof-events.cjs
+COPY --from=runtime-assets --chown=node:node /app/scripts/lib/secret-redaction.cjs ./scripts/lib/secret-redaction.cjs
 
 # Keep pnpm available in the runtime image for container-local workflows.
 # Use a shared Corepack home so the non-root `node` user does not need a

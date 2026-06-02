@@ -8,6 +8,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/agent-os-rc.yml"
+      - "Dockerfile"
       - "docs/start/agent-os-alpha.md"
       - "docs/tools/capability-agents.md"
       - "docs/reference/agent-os-contract.md"
