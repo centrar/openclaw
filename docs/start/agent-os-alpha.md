@@ -140,7 +140,7 @@ The package script builds release artifacts, writes the package inventory, packs
 After packing, inspect the Agent OS files in the tarball:
 
 ```bash
-tar -tf .artifacts/agent-os-rc-package/openclaw-*.tgz | grep -E 'agent-os-agent-inventory|agent-os-contracts|proof-events|full-local|capability-agent-profile|capability-proof-kit|capability-agents|agent-os-contract'
+tar -tf .artifacts/agent-os-rc-package/openclaw-*.tgz | grep -E 'agent-os-agent-inventory|agent-os-agent-manager|agent-os-contracts|proof-events|full-local|capability-agent-profile|capability-proof-kit|capability-agents|agent-os-contract'
 ```
 
 At minimum the tarball must contain:
@@ -150,6 +150,7 @@ At minimum the tarball must contain:
 - `scripts/lib/agent-os-contracts.cjs`
 - `scripts/lib/proof-events.cjs`
 - `scripts/agents/agent-os-agent-inventory.mjs`
+- `scripts/agents/agent-os-agent-manager.mjs`
 - `scripts/agents/capability-agent-profile.mjs`
 - `scripts/agents/capability-proof-kit.mjs`
 - `docs/start/agent-os-alpha.md`
@@ -201,6 +202,17 @@ node scripts/agents/agent-os-agent-inventory.mjs scan --output .artifacts/agent-
 ```
 
 The scan writes an `agent-os.agent-inventory.v1` artifact that separates configured OpenClaw agents, filesystem agents, skill-owned agents, tool adapters, workspace-only entries, native bridge agents, dormant entries, and stale path references. Use that inventory as the import plan; do not flatten every discovered script or skill into `agents.list`.
+
+Build the management plan and catalog after inventory:
+
+```bash
+node scripts/agents/agent-os-agent-manager.mjs check
+node scripts/agents/agent-os-agent-manager.mjs plan --output .artifacts/agent-os-agent-manager-plan.json
+node scripts/agents/agent-os-agent-manager.mjs apply --output .artifacts/agent-os-managed-agents.json
+node scripts/agents/agent-os-agent-manager.mjs smoke --all-managed --output .artifacts/agent-os-agent-manager-smoke.json
+```
+
+The manager writes an `agent-os.agent-manager.v1` catalog and an `agent-os.agent-manager-smoke.v1` control-plane smoke artifact. That proves the repo can discover, classify, route, and contract-smoke managed entries. It does not execute arbitrary local scripts or claim every discovered agent has completed a real user task. Per-agent live delivery still needs dispatcher, adapter, or full-local proof for the selected worker.
 
 External framework adapters should target the Agent OS contract rather than bypass it:
 

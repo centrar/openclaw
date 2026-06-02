@@ -28,6 +28,17 @@ node scripts/agents/agent-os-agent-inventory.mjs scan --output .artifacts/agent-
 
 The inventory uses the `agent-os.agent-inventory.v1` schema and dedupes configured `openclaw.json` agents, `agents_registry.json`, `~/.openclaw/agents`, `~/.openclaw/subagents`, `workspace_*` directories, repo/user skill directories with `SKILL.md`, skill-owned `agents/*.yaml` files, built-in capability profiles, and host-native bridge IDs. It classifies each ID by manageability so the scheduler can distinguish registered agents from tool adapters, skill adapters, dormant references, stale paths, and workspace-only candidates.
 
+Convert the inventory into a management catalog:
+
+```bash
+node scripts/agents/agent-os-agent-manager.mjs check
+node scripts/agents/agent-os-agent-manager.mjs plan --output .artifacts/agent-os-agent-manager-plan.json
+node scripts/agents/agent-os-agent-manager.mjs apply --output .artifacts/agent-os-managed-agents.json
+node scripts/agents/agent-os-agent-manager.mjs smoke --all-managed --output .artifacts/agent-os-agent-manager-smoke.json
+```
+
+`apply` writes a local catalog artifact; it does not bulk-edit `openclaw.json` or execute discovered scripts. `smoke --all-managed` validates control-plane routing and Agent OS ticket/proof/artifact contracts for registered and adapter-managed entries. Real live delivery remains a separate proof: the selected agent must claim a ticket, run, write artifacts, emit proof events, and finish through the dispatcher or adapter.
+
 Check whether the profiles are installed in your OpenClaw config:
 
 ```bash
