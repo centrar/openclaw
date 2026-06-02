@@ -13,6 +13,7 @@ const {
   assertAgentOsProofEvent,
   assertAgentOsTicket,
 } = require("../lib/agent-os-contracts.cjs");
+const { redactSensitiveValue } = require("../lib/secret-redaction.cjs");
 
 export const AGENT_OS_AGENT_MANAGER_SCHEMA_VERSION = "agent-os.agent-manager.v1";
 export const AGENT_OS_AGENT_MANAGER_SMOKE_SCHEMA_VERSION = "agent-os.agent-manager-smoke.v1";
@@ -107,7 +108,9 @@ function ensureParentDir(filePath) {
 function writeJson(filePath, value) {
   const resolved = path.resolve(filePath);
   ensureParentDir(resolved);
-  writeFileSync(resolved, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(resolved, `${JSON.stringify(redactSensitiveValue(value), null, 2)}\n`, {
+    mode: 0o600,
+  });
   return resolved;
 }
 
@@ -489,7 +492,10 @@ function formatSmokeSummary(smoke) {
 }
 
 function outputPayload(payload, options, defaultPath = null) {
-  const output = options.format === "summary" ? null : `${JSON.stringify(payload, null, 2)}\n`;
+  const output =
+    options.format === "summary"
+      ? null
+      : `${JSON.stringify(redactSensitiveValue(payload), null, 2)}\n`;
   const outputPath = options.outputPath || defaultPath;
   if (outputPath) {
     writeJson(outputPath, payload);
@@ -542,7 +548,7 @@ export function runAgentManagerCli(argv = process.argv.slice(2)) {
   if (options.format === "summary") {
     process.stdout.write(formatSmokeSummary(smoke));
   } else if (!options.outputPath) {
-    process.stdout.write(`${JSON.stringify(smoke, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(redactSensitiveValue(smoke), null, 2)}\n`);
   }
   return 0;
 }

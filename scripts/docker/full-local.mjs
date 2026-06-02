@@ -22,6 +22,7 @@ import JSON5 from "json5";
 
 const require = createRequire(import.meta.url);
 const { normalizeAgentOsArtifactContract } = require("../lib/agent-os-contracts.cjs");
+const { redactSensitiveValue } = require("../lib/secret-redaction.cjs");
 
 export const FULL_LOCAL_SERVICES = [
   "openclaw-gateway",
@@ -3660,7 +3661,11 @@ function ensureArtifactParent(cwd, artifactPath) {
 
 function writeJsonArtifact(cwd, artifactPath, payload) {
   ensureArtifactParent(cwd, artifactPath);
-  writeFileSync(path.resolve(cwd, artifactPath), `${JSON.stringify(payload, null, 2)}\n`);
+  writeFileSync(
+    path.resolve(cwd, artifactPath),
+    `${JSON.stringify(redactSensitiveValue(payload), null, 2)}\n`,
+    { mode: 0o600 },
+  );
 }
 
 async function waitForProof(runtime, options = {}) {

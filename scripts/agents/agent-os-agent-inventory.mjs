@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import JSON5 from "json5";
 import YAML from "yaml";
+
+const require = createRequire(import.meta.url);
+const { redactSensitiveValue } = require("../lib/secret-redaction.cjs");
 
 export const AGENT_OS_AGENT_INVENTORY_SCHEMA_VERSION = "agent-os.agent-inventory.v1";
 
@@ -602,7 +606,7 @@ export function runAgentInventoryCli(argv = process.argv.slice(2)) {
   const output =
     options.command === "summary" || options.format === "summary"
       ? formatSummary(inventory)
-      : `${JSON.stringify(inventory, null, 2)}\n`;
+      : `${JSON.stringify(redactSensitiveValue(inventory), null, 2)}\n`;
   if (options.outputPath) {
     const resolvedOutput = path.resolve(options.outputPath || DEFAULT_OUTPUT_PATH);
     const parent = path.dirname(resolvedOutput);

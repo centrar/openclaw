@@ -1,4 +1,5 @@
 import type { SessionMetadata, SessionTreeEntry } from "../types.js";
+import { redactSessionValue } from "./redact.js";
 import { BaseSessionStorage } from "./storage-base.js";
 import { uuidv7 } from "./uuid.js";
 
@@ -14,10 +15,10 @@ export class InMemorySessionStorage<
   }
 
   override async setLeafId(leafId: string | null): Promise<void> {
-    this.recordEntry(this.createLeafEntry(leafId));
+    this.recordEntry(redactSessionValue(this.createLeafEntry(leafId)));
   }
 
   override async appendEntry(entry: SessionTreeEntry): Promise<void> {
-    this.recordEntry(entry);
+    this.recordEntry(redactSessionValue(entry));
   }
 }

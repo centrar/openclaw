@@ -1,5 +1,6 @@
 import type { FileSystem, JsonlSessionMetadata, SessionTreeEntry } from "../types.js";
 import { SessionError, toError } from "../types.js";
+import { redactSessionValue } from "./redact.js";
 import { getFileSystemResultOrThrow } from "./repo-utils.js";
 import { BaseSessionStorage, leafIdAfterEntry } from "./storage-base.js";
 import { parseSessionTimestampMs } from "./timestamps.js";
@@ -212,15 +213,16 @@ export class JsonlSessionStorage extends BaseSessionStorage<JsonlSessionMetadata
       cwd: options.cwd,
       parentSession: options.parentSessionPath,
     };
+    const persistedHeader = redactSessionValue(header);
     getFileSystemResultOrThrow(
-      await fs.writeFile(filePath, `${JSON.stringify(header)}\n`),
+      await fs.writeFile(filePath, `${JSON.stringify(persistedHeader)}\n`),
       `Failed to create session ${filePath}`,
     );
-    return new JsonlSessionStorage(fs, filePath, header, [], null);
+    return new JsonlSessionStorage(fs, filePath, persistedHeader, [], null);
   }
 
   override async setLeafId(leafId: string | null): Promise<void> {
-    const entry = this.createLeafEntry(leafId);
+    const entry = redactSessionValue(this.createLeafEntry(leafId));
     getFileSystemResultOrThrow(
       await this.fs.appendFile(this.filePath, `${JSON.stringify(entry)}\n`),
       `Failed to append session leaf ${entry.id}`,
@@ -229,10 +231,11 @@ export class JsonlSessionStorage extends BaseSessionStorage<JsonlSessionMetadata
   }
 
   override async appendEntry(entry: SessionTreeEntry): Promise<void> {
+    const persistedEntry = redactSessionValue(entry);
     getFileSystemResultOrThrow(
-      await this.fs.appendFile(this.filePath, `${JSON.stringify(entry)}\n`),
-      `Failed to append session entry ${entry.id}`,
+      await this.fs.appendFile(this.filePath, `${JSON.stringify(persistedEntry)}\n`),
+      `Failed to append session entry ${persistedEntry.id}`,
     );
-    this.recordEntry(entry);
+    this.recordEntry(persistedEntry);
   }
 }

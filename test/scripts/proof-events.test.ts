@@ -92,4 +92,40 @@ describe("proof events substrate", () => {
       rmSync(dir, { force: true, recursive: true });
     }
   });
+
+  it("redacts raw NVIDIA keys before proof events are persisted", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "openclaw-proof-events-redact-"));
+    mkdirSync(dir, { recursive: true });
+    const db = new DatabaseSync(path.join(dir, "proof.db"));
+    const rawKey = ["nvapi", "proof-secret"].join("-");
+    try {
+      ensureProofEventsSchema(db);
+      recordProofEvent(db, {
+        component: "sentinel",
+        eventType: "SECRET_PROBE",
+        payload: {
+          [rawKey]: "object keys are redacted too",
+          bearer: `Bearer ${rawKey}`,
+          nested: { value: rawKey },
+        },
+        runId: "run-redact",
+        status: "INFO",
+        summary: `validated ${rawKey}`,
+        ticketId: "ticket-redact",
+      });
+
+      const row = db
+        .prepare("SELECT summary, payload, artifact_path FROM proof_events WHERE run_id = ?")
+        .get("run-redact");
+      expect(JSON.stringify(row)).not.toContain(rawKey);
+      expect(JSON.stringify(row)).toContain("[REDACTED_NVIDIA_API_KEY]");
+
+      const event = listProofEvents(db, { runId: "run-redact" })[0];
+      expect(JSON.stringify(event)).not.toContain(rawKey);
+      expect(JSON.stringify(event)).toContain("[REDACTED_NVIDIA_API_KEY]");
+    } finally {
+      db.close();
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
 });

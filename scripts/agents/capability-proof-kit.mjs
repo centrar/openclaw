@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const { normalizeAgentOsArtifactContract } = require("../lib/agent-os-contracts.cjs");
+const { redactSensitiveText, redactSensitiveValue } = require("../lib/secret-redaction.cjs");
 
 export const CAPABILITY_PROOF_SCHEMA_VERSION = "2.0";
 export const DEFAULT_CAPABILITY_PROOF_ROOT = path.join(".artifacts", "capability-proofs");
@@ -83,7 +84,9 @@ function resolveProofDir(ticketId, outDir) {
 
 function writeJson(filePath, data) {
   ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`);
+  fs.writeFileSync(filePath, `${JSON.stringify(redactSensitiveValue(data), null, 2)}\n`, {
+    mode: 0o600,
+  });
   return filePath;
 }
 
@@ -106,12 +109,14 @@ function attachArtifactContract(record, artifactPath, options = {}) {
 
 function writeHtml(filePath, title, body) {
   ensureDir(path.dirname(filePath));
+  const safeTitle = redactSensitiveText(title);
+  const safeBody = redactSensitiveText(body);
   const html = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)}</title>
+  <title>${escapeHtml(safeTitle)}</title>
   <style>
     :root {
       color-scheme: light;
@@ -164,7 +169,7 @@ function writeHtml(filePath, title, body) {
   </style>
 </head>
 <body>
-  <main>${body}</main>
+  <main>${safeBody}</main>
 </body>
 </html>
 `;

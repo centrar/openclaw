@@ -7,6 +7,7 @@ const {
   normalizeAgentOsProofEvent,
   normalizeAgentOsProofStatus,
 } = require("./agent-os-contracts.cjs");
+const { redactSensitiveText, redactSensitiveValue } = require("./secret-redaction.cjs");
 
 const DEFAULT_PROOF_EVENT_DB_PATH = path.join(os.homedir(), ".openclaw", "swarm_blackboard.db");
 const PROOF_EVENT_STATUSES = AGENT_OS_PROOF_STATUSES;
@@ -20,17 +21,18 @@ function normalizeOptionalString(value) {
     return null;
   }
   const stringValue = String(value);
-  return stringValue.length === 0 ? null : stringValue;
+  return stringValue.length === 0 ? null : redactSensitiveText(stringValue);
 }
 
 function stringifyPayload(payload) {
   if (payload === undefined || payload === null) {
     return null;
   }
+  const redactedPayload = redactSensitiveValue(payload);
   if (typeof payload === "string") {
-    return payload;
+    return redactedPayload;
   }
-  return JSON.stringify(payload);
+  return JSON.stringify(redactedPayload);
 }
 
 function parsePayload(payload) {
@@ -41,9 +43,9 @@ function parsePayload(payload) {
     return payload;
   }
   try {
-    return JSON.parse(payload);
+    return redactSensitiveValue(JSON.parse(payload));
   } catch {
-    return payload;
+    return redactSensitiveText(payload);
   }
 }
 

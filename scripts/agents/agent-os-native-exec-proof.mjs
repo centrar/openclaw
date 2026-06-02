@@ -14,6 +14,7 @@ const {
   assertAgentOsProofEvent,
   assertAgentOsTicket,
 } = require("../lib/agent-os-contracts.cjs");
+const { redactSensitiveValue } = require("../lib/secret-redaction.cjs");
 
 export const AGENT_OS_NATIVE_EXEC_PROOF_SCHEMA_VERSION = "agent-os.native-exec-proof.v1";
 
@@ -100,7 +101,9 @@ function ensureParentDir(filePath) {
 function writeJson(filePath, value) {
   const resolved = path.resolve(filePath);
   ensureParentDir(resolved);
-  writeFileSync(resolved, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(resolved, `${JSON.stringify(redactSensitiveValue(value), null, 2)}\n`, {
+    mode: 0o600,
+  });
   return resolved;
 }
 
@@ -598,7 +601,7 @@ export async function runNativeExecutionProofCli(argv = process.argv.slice(2)) {
   if (options.format === "summary") {
     process.stdout.write(formatSummary(proof));
   } else if (!options.outputPath) {
-    process.stdout.write(`${JSON.stringify(proof, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(redactSensitiveValue(proof), null, 2)}\n`);
   }
   return options.requireNative && !proof.proofClaim.allSelectedAgentCodeExecutionProven ? 1 : 0;
 }

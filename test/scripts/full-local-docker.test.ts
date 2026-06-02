@@ -2624,6 +2624,83 @@ describe("scripts/docker/full-local", () => {
     }
   });
 
+  it("redacts raw NVIDIA keys from validator state keys, values, and logs", () => {
+    const homeDir = mkdtempSync(path.join(tmpdir(), "openclaw-validator-home-"));
+    const vaultPath = path.join(homeDir, "vault.json");
+    const stateDir = path.join(homeDir, ".openclaw", "sentinel");
+    const script = path.resolve("scripts/docker/sidecars/nvidia-key-validator.cjs");
+    const rawKey = ["nvapi", "state-cleanup"].join("-");
+    try {
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(
+        path.join(stateDir, "validation-state.json"),
+        JSON.stringify({
+          keys: {
+            [rawKey]: {
+              lastChecked: 0,
+              status: "valid",
+            },
+            [`REVOKED_${rawKey}`]: {
+              lastChecked: 0,
+              status: "invalid",
+            },
+            ["a".repeat(64)]: {
+              error: `cached ${rawKey}`,
+              lastChecked: 0,
+              status: "unknown",
+            },
+          },
+        }),
+      );
+
+      const child = spawnSync(
+        process.execPath,
+        [
+          "-e",
+          `
+            const leaked = ${JSON.stringify(`temporary ${rawKey}`)};
+            global.fetch = async () => ({
+              ok: false,
+              status: 503,
+              text: async () => leaked,
+            });
+            require(${JSON.stringify(script)});
+          `,
+        ],
+        {
+          cwd: path.resolve("."),
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            HOME: homeDir,
+            NVIDIA_API_KEY: "",
+            NVIDIA_API_KEYS: rawKey,
+            OPENCLAW_NVIDIA_VAULT_PATH: vaultPath,
+            OPENCLAW_SENTINEL_RESEED_NVIDIA_VAULT: "0",
+            OPENCLAW_SIGNAL_HUB_NVIDIA_API_KEYS: "",
+            USERPROFILE: homeDir,
+          },
+        },
+      );
+
+      expect(child.status, child.stderr).toBe(0);
+      expect(child.stdout).not.toContain(rawKey);
+      expect(child.stderr).not.toContain(rawKey);
+      const validationStateText = readFileSync(
+        path.join(stateDir, "validation-state.json"),
+        "utf8",
+      );
+      expect(validationStateText).not.toContain(rawKey);
+      expect(validationStateText).toContain("[REDACTED_NVIDIA_API_KEY]");
+      const validationState = JSON.parse(validationStateText);
+      expect(Object.keys(validationState.keys).every((key) => /^[a-f0-9]{64}$/u.test(key))).toBe(
+        true,
+      );
+    } finally {
+      rmSync(homeDir, { force: true, recursive: true });
+    }
+  });
+
   it("indexes Sentinel validator state by key fingerprint instead of raw NVIDIA keys", () => {
     const validator = readFileSync("scripts/docker/sidecars/nvidia-key-validator.cjs", "utf8");
 

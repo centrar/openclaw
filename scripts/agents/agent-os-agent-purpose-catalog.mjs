@@ -9,6 +9,7 @@ import {
   readdirSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +17,9 @@ import JSON5 from "json5";
 import YAML from "yaml";
 import { buildAgentManagementPlan } from "./agent-os-agent-manager.mjs";
 import { CAPABILITY_AGENT_PROFILES } from "./capability-agent-profile.mjs";
+
+const require = createRequire(import.meta.url);
+const { redactSensitiveValue } = require("../lib/secret-redaction.cjs");
 
 export const AGENT_OS_AGENT_PURPOSE_CATALOG_SCHEMA_VERSION = "agent-os.agent-purpose-catalog.v1";
 
@@ -92,7 +96,9 @@ function ensureParentDir(filePath) {
 function writeJson(filePath, value) {
   const resolved = path.resolve(filePath);
   ensureParentDir(resolved);
-  writeFileSync(resolved, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(resolved, `${JSON.stringify(redactSensitiveValue(value), null, 2)}\n`, {
+    mode: 0o600,
+  });
   return resolved;
 }
 
@@ -829,7 +835,7 @@ export function runAgentPurposeCatalogCli(argv = process.argv.slice(2)) {
   if (options.format === "summary") {
     process.stdout.write(formatSummary(catalog));
   } else if (!options.outputPath) {
-    process.stdout.write(`${JSON.stringify(catalog, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(redactSensitiveValue(catalog), null, 2)}\n`);
   }
   return options.requirePurpose && catalog.summary.inferredPurpose > 0 ? 1 : 0;
 }

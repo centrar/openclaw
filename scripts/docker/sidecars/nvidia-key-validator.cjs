@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const crypto = require("node:crypto");
 const os = require("node:os");
 const path = require("node:path");
+const { redactSensitiveText, redactSensitiveValue } = require("../../lib/secret-redaction.cjs");
 
 const STATE_DIR = path.join(os.homedir(), ".openclaw");
 const VALIDATION_STATE_DIR =
@@ -62,6 +63,46 @@ function isLegacyRawKeyStateEntry(key) {
   return /^REVOKED_nvapi-[A-Za-z0-9_-]+$/u.test(String(key));
 }
 
+function isRawNvidiaApiKeyStateEntry(key) {
+  return /^nvapi-[A-Za-z0-9_-]+$/u.test(String(key));
+}
+
+function isStateFingerprint(key) {
+  return /^[a-f0-9]{64}$/u.test(String(key));
+}
+
+function isRevokedFingerprint(key) {
+  return /^REVOKED_[a-f0-9]{64}$/u.test(String(key));
+}
+
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function sanitizeState(state, activeFingerprints = null) {
+  const source = isRecord(state) ? state : {};
+  const sanitized = redactSensitiveValue({ ...source, keys: {} });
+  const sourceKeys = isRecord(source.keys) ? source.keys : {};
+  sanitized.keys = {};
+  for (const [fingerprint, info] of Object.entries(sourceKeys)) {
+    if (isLegacyRawKeyStateEntry(fingerprint) || isRawNvidiaApiKeyStateEntry(fingerprint)) {
+      continue;
+    }
+    if (!isStateFingerprint(fingerprint) && !isRevokedFingerprint(fingerprint)) {
+      continue;
+    }
+    if (
+      activeFingerprints &&
+      isStateFingerprint(fingerprint) &&
+      !activeFingerprints.has(fingerprint)
+    ) {
+      continue;
+    }
+    sanitized.keys[fingerprint] = redactSensitiveValue(info);
+  }
+  return sanitized;
+}
+
 function readJson(filePath, fallback) {
   if (!fs.existsSync(filePath)) {
     return fallback;
@@ -76,16 +117,16 @@ function readJson(filePath, fallback) {
 
 function writeJsonAtomic(filePath, tmpPath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2));
+  fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), { mode: 0o600 });
   fs.renameSync(tmpPath, filePath);
 }
 
 function loadState() {
-  return readJson(STATE_FILE, { keys: {} });
+  return sanitizeState(readJson(STATE_FILE, { keys: {} }));
 }
 
 function saveState(state) {
-  writeJsonAtomic(STATE_FILE, STATE_TMP, state);
+  writeJsonAtomic(STATE_FILE, STATE_TMP, sanitizeState(state));
 }
 
 function loadVault() {
@@ -121,6 +162,7 @@ function saveSeedMarker(keyCount) {
         null,
         2,
       ),
+      { mode: 0o600 },
     );
   } catch (error) {
     console.warn(`[Sentinel] Could not write vault seed marker: ${error.message}`);
@@ -190,13 +232,17 @@ async function validateKey(key) {
       return { error: null, quarantine: false, status: "valid" };
     }
     const body = await response.text().catch(() => "");
-    const error = `HTTP ${response.status}: ${body.slice(0, 150)}`;
+    const error = redactSensitiveText(`HTTP ${response.status}: ${body.slice(0, 150)}`);
     if (response.status === 401 || response.status === 403) {
       return { error, quarantine: true, status: "invalid" };
     }
     return { error, quarantine: false, status: "transient" };
   } catch (error) {
-    return { error: error.message, quarantine: false, status: "transient" };
+    return {
+      error: redactSensitiveText(error.message),
+      quarantine: false,
+      status: "transient",
+    };
   }
 }
 
@@ -228,6 +274,7 @@ async function run() {
   for (const fingerprint of Object.keys(state.keys)) {
     if (
       isLegacyRawKeyStateEntry(fingerprint) ||
+      isRawNvidiaApiKeyStateEntry(fingerprint) ||
       (!activeFingerprints.has(fingerprint) && !fingerprint.startsWith("REVOKED_"))
     ) {
       delete state.keys[fingerprint];
@@ -251,7 +298,7 @@ async function run() {
     const key = keysByFingerprint.get(fingerprint);
     const result = await validateKey(key);
     state.keys[fingerprint] = {
-      error: result.error,
+      error: result.error ? redactSensitiveText(result.error) : result.error,
       lastChecked: result.status === "transient" ? 0 : now,
       status: result.status === "transient" ? "unknown" : result.status,
     };
@@ -264,7 +311,7 @@ async function run() {
       );
     }
   }
-  saveState(state);
+  saveState(sanitizeState(state, activeFingerprints));
 }
 
 void (async () => {

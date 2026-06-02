@@ -51,6 +51,36 @@ describe("capability proof kit", () => {
     }
   });
 
+  it("redacts raw NVIDIA keys from proof bundle artifacts", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "openclaw-proof-events-redact-"));
+    const rawKey = ["nvapi", "artifact-secret"].join("-");
+    try {
+      const bundle = createProofEventBundle({
+        events: [
+          {
+            component: "sentinel",
+            eventType: "MODEL_CALL",
+            payload: {
+              [rawKey]: "field name",
+              bearer: `Bearer ${rawKey}`,
+              value: rawKey,
+            },
+            status: "PASS",
+          },
+        ],
+        outDir: dir,
+        requiredEventTypes: ["MODEL_CALL"],
+        ticketId: "ticket-redact",
+      });
+
+      const artifactText = readFileSync(bundle.artifactPath, "utf8");
+      expect(artifactText).not.toContain(rawKey);
+      expect(artifactText).toContain("[REDACTED_NVIDIA_API_KEY]");
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   it("creates browser proof bundles with session boundaries and artifacts", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "openclaw-browser-proof-"));
     try {
