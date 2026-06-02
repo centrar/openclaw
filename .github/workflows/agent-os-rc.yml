@@ -22,6 +22,8 @@ on:
       - "scripts/docker/**"
       - "scripts/lib/agent-os-contracts.cjs"
       - "scripts/lib/proof-events.cjs"
+      - "scripts/lib/secret-redaction.cjs"
+      - "packages/agent-core/src/harness/session/**"
       - "test/scripts/agent-os-agent-delivery-proof.test.ts"
       - "test/scripts/agent-os-agent-inventory.test.ts"
       - "test/scripts/agent-os-agent-manager.test.ts"
@@ -90,7 +92,9 @@ jobs:
         run: |
           set -euo pipefail
           node --check scripts/docker/full-local.mjs
+          node --check scripts/docker/sidecars/nvidia-key-validator.cjs
           node --check scripts/package-openclaw-for-docker.mjs
+          node --check scripts/lib/secret-redaction.cjs
           node --check scripts/agents/agent-os-agent-delivery-proof.mjs
           node --check scripts/agents/agent-os-agent-inventory.mjs
           node --check scripts/agents/agent-os-agent-manager.mjs
@@ -112,6 +116,7 @@ jobs:
             test/scripts/proof-events.test.ts \
             test/scripts/capability-agent-profile.test.ts \
             test/scripts/capability-proof-kit.test.ts \
+            packages/agent-core/src/harness/session/jsonl-storage.test.ts \
             extensions/nvidia/sentinel-gateway.test.ts
 
   package:
@@ -157,6 +162,7 @@ jobs:
             "package/scripts/docker/sidecars/python-mcp-launcher.cjs"
             "package/scripts/lib/agent-os-contracts.cjs"
             "package/scripts/lib/proof-events.cjs"
+            "package/scripts/lib/secret-redaction.cjs"
             "package/scripts/agents/agent-os-agent-delivery-proof.mjs"
             "package/scripts/agents/agent-os-agent-inventory.mjs"
             "package/scripts/agents/agent-os-agent-manager.mjs"
@@ -183,6 +189,7 @@ jobs:
           node "$pkg/openclaw.mjs" --version
           test -f "$pkg/scripts/docker/full-local.mjs"
           test -f "$pkg/scripts/lib/agent-os-contracts.cjs"
+          test -f "$pkg/scripts/lib/secret-redaction.cjs"
           test -f "$pkg/scripts/agents/agent-os-agent-delivery-proof.mjs"
           test -f "$pkg/scripts/agents/agent-os-agent-inventory.mjs"
           test -f "$pkg/scripts/agents/agent-os-agent-manager.mjs"
@@ -208,6 +215,7 @@ jobs:
     timeout-minutes: 75
     env:
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      NVIDIA_API_KEYS: ${{ secrets.NVIDIA_API_KEYS }}
       OPENCLAW_GATEWAY_TOKEN: agent-os-ci-gateway-token
       OPENCLAW_SENTINEL_TOKEN: agent-os-ci-sentinel-token
       REQUESTED_DOCKER_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.run_docker == true }}
@@ -229,15 +237,18 @@ jobs:
         id: sentinel-secret
         run: |
           set -euo pipefail
-          if [ -z "${NVIDIA_API_KEY:-}" ]; then
+          if [ -z "${NVIDIA_API_KEY:-}" ] && [ -z "${NVIDIA_API_KEYS:-}" ]; then
             if [ "${REQUESTED_DOCKER_PROOF}" = "true" ]; then
-              echo "::error::NVIDIA_API_KEY repository secret is required for requested Agent OS full-local RC proof."
+              echo "::error::NVIDIA_API_KEY or NVIDIA_API_KEYS repository secret is required for requested Agent OS full-local RC proof."
               exit 1
             fi
-            echo "::notice::NVIDIA_API_KEY repository secret is not configured; skipping Docker full-local proof for this push."
+            echo "::notice::NVIDIA_API_KEY/NVIDIA_API_KEYS repository secret is not configured; skipping Docker full-local proof for this push."
             echo "present=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          key_count="$(node -e "const pool=[process.env.NVIDIA_API_KEY, process.env.NVIDIA_API_KEYS].filter(Boolean).join(','); const keys=new Set(pool.split(/[,\\r\\n]+/).map((v)=>v.trim()).filter(Boolean)); console.log(keys.size);")"
+          echo "key_count=${key_count}" >> "$GITHUB_OUTPUT"
+          echo "::notice::NVIDIA key pool is configured for Agent OS full-local proof (${key_count} key(s))."
           echo "present=true" >> "$GITHUB_OUTPUT"
 
       - name: Boot full-local
@@ -252,6 +263,18 @@ jobs:
         if: steps.sentinel-secret.outputs.present == 'true'
         run: node scripts/docker/full-local.mjs golden
 
+      - name: Prove all discovered agents deliver through Agent OS
+        if: steps.sentinel-secret.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          node scripts/agents/agent-os-agent-delivery-proof.mjs prove \
+            --output .artifacts/agent-os-agent-delivery-proof.json \
+            --agent-artifacts .artifacts/agent-os-agent-delivery-proof \
+            --require-contract \
+            --require-callable \
+            --require-live \
+            --format summary
+
       - name: Stop full-local
         if: always() && steps.sentinel-secret.outputs.present == 'true'
         run: node scripts/docker/full-local.mjs down
@@ -265,4 +288,6 @@ jobs:
             .artifacts/full-local-proof.json
             .artifacts/full-local-benchmark.json
             .artifacts/full-local-agent-os-golden-e2e.json
+            .artifacts/agent-os-agent-delivery-proof.json
+            .artifacts/agent-os-agent-delivery-proof/**
           if-no-files-found: ignore

@@ -155,6 +155,7 @@
     "scripts/lib/official-external-provider-catalog.json",
     "scripts/lib/agent-os-contracts.cjs",
     "scripts/lib/proof-events.cjs",
+    "scripts/lib/secret-redaction.cjs",
     "scripts/lib/package-dist-imports.mjs",
     "scripts/postinstall-bundled-plugins.mjs",
     "scripts/windows-cmd-helpers.mjs"
