@@ -51,6 +51,14 @@ node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-live --req
 
 The purpose catalog binds each discovered entry to a task objective from existing definitions and allowlisted local metadata before delivery proof runs. Contract delivery proves the Agent OS can select the entry, issue a ticket contract, write a proof artifact, and emit an Agent OS proof event. Live delivery runs a bounded route handler for each selected entry; native routes, supervised import routes, and quarantine routes all emit their delivery mode in the proof event. Use `--require-purpose` when every selected entry must have source-backed purpose evidence. Do not market that as arbitrary local agent-code execution unless a separate native executor proof exists for that agent.
 
+Prove arbitrary native/local code execution one selected agent at a time:
+
+```bash
+node scripts/agents/agent-os-native-exec-proof.mjs prove --agent test_fileio --require-native --output .artifacts/agent-os-native-exec-proof-test_fileio.json --agent-artifacts .artifacts/agent-os-native-exec-proof --format summary
+```
+
+Native execution proof runs the selected local implementation as a host process with a sanitized environment and redacted output. It proves `agentCodeExecutionProven: true` only for that selected agent; keep credential-bearing or externally mutating tools behind explicit dry-run wrappers before running this gate.
+
 Check whether the profiles are installed in your OpenClaw config:
 
 ```bash

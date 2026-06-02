@@ -140,7 +140,7 @@ The package script builds release artifacts, writes the package inventory, packs
 After packing, inspect the Agent OS files in the tarball:
 
 ```bash
-tar -tf .artifacts/agent-os-rc-package/openclaw-*.tgz | grep -E 'agent-os-agent-delivery-proof|agent-os-agent-inventory|agent-os-agent-manager|agent-os-agent-purpose-catalog|agent-os-contracts|proof-events|full-local|capability-agent-profile|capability-proof-kit|capability-agents|agent-os-contract'
+tar -tf .artifacts/agent-os-rc-package/openclaw-*.tgz | grep -E 'agent-os-agent-delivery-proof|agent-os-agent-inventory|agent-os-agent-manager|agent-os-agent-purpose-catalog|agent-os-native-exec-proof|agent-os-contracts|proof-events|full-local|capability-agent-profile|capability-proof-kit|capability-agents|agent-os-contract'
 ```
 
 At minimum the tarball must contain:
@@ -153,6 +153,7 @@ At minimum the tarball must contain:
 - `scripts/agents/agent-os-agent-inventory.mjs`
 - `scripts/agents/agent-os-agent-manager.mjs`
 - `scripts/agents/agent-os-agent-purpose-catalog.mjs`
+- `scripts/agents/agent-os-native-exec-proof.mjs`
 - `scripts/agents/capability-agent-profile.mjs`
 - `scripts/agents/capability-proof-kit.mjs`
 - `docs/start/agent-os-alpha.md`
@@ -231,6 +232,14 @@ node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-live --req
 The first command writes a proof result for every discovered entry. The second fails closed unless every selected managed entry has contract-delivery proof. The third fails closed unless every selected entry has live delivery proof through a bounded Agent OS route handler. The fourth also fails closed unless every selected entry has source-backed purpose evidence.
 
 A passing `--require-live` run proves every selected entry accepted an Agent OS ticket, produced an artifact, and emitted proof through its native route or supervised import/quarantine route. It does not prove arbitrary local agent code was executed; proof events include that distinction so stale paths and quarantined surfaces remain visible.
+
+Prove one selected local implementation with the native execution gate:
+
+```bash
+node scripts/agents/agent-os-native-exec-proof.mjs prove --agent test_fileio --require-native --output .artifacts/agent-os-native-exec-proof-test_fileio.json --agent-artifacts .artifacts/agent-os-native-exec-proof --format summary
+```
+
+Native execution proof runs only the selected local implementation as a host process with a sanitized environment and redacted output. A passing `--require-native` run proves arbitrary native/local code execution for that selected agent only; it does not generalize to every discovered agent and does not prove container isolation.
 
 External framework adapters should target the Agent OS contract rather than bypass it:
 

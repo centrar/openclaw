@@ -16,6 +16,7 @@ on:
       - "scripts/agents/agent-os-agent-inventory.mjs"
       - "scripts/agents/agent-os-agent-manager.mjs"
       - "scripts/agents/agent-os-agent-purpose-catalog.mjs"
+      - "scripts/agents/agent-os-native-exec-proof.mjs"
       - "scripts/agents/capability-agent-profile.mjs"
       - "scripts/agents/capability-proof-kit.mjs"
       - "scripts/docker/**"
@@ -25,6 +26,7 @@ on:
       - "test/scripts/agent-os-agent-inventory.test.ts"
       - "test/scripts/agent-os-agent-manager.test.ts"
       - "test/scripts/agent-os-agent-purpose-catalog.test.ts"
+      - "test/scripts/agent-os-native-exec-proof.test.ts"
       - "test/scripts/capability-agent-profile.test.ts"
       - "test/scripts/capability-proof-kit.test.ts"
       - "test/scripts/agent-os-contracts.test.ts"
@@ -93,6 +95,7 @@ jobs:
           node --check scripts/agents/agent-os-agent-inventory.mjs
           node --check scripts/agents/agent-os-agent-manager.mjs
           node --check scripts/agents/agent-os-agent-purpose-catalog.mjs
+          node --check scripts/agents/agent-os-native-exec-proof.mjs
 
       - name: Run Agent OS contract and security tests
         run: |
@@ -104,6 +107,7 @@ jobs:
             test/scripts/agent-os-agent-inventory.test.ts \
             test/scripts/agent-os-agent-manager.test.ts \
             test/scripts/agent-os-agent-purpose-catalog.test.ts \
+            test/scripts/agent-os-native-exec-proof.test.ts \
             test/scripts/agent-os-contracts.test.ts \
             test/scripts/proof-events.test.ts \
             test/scripts/capability-agent-profile.test.ts \
@@ -157,6 +161,7 @@ jobs:
             "package/scripts/agents/agent-os-agent-inventory.mjs"
             "package/scripts/agents/agent-os-agent-manager.mjs"
             "package/scripts/agents/agent-os-agent-purpose-catalog.mjs"
+            "package/scripts/agents/agent-os-native-exec-proof.mjs"
             "package/scripts/agents/capability-agent-profile.mjs"
             "package/scripts/agents/capability-proof-kit.mjs"
             "package/docker-compose.sidecars.yml"
@@ -182,6 +187,7 @@ jobs:
           test -f "$pkg/scripts/agents/agent-os-agent-inventory.mjs"
           test -f "$pkg/scripts/agents/agent-os-agent-manager.mjs"
           test -f "$pkg/scripts/agents/agent-os-agent-purpose-catalog.mjs"
+          test -f "$pkg/scripts/agents/agent-os-native-exec-proof.mjs"
           test -f "$pkg/scripts/agents/capability-agent-profile.mjs"
           test -f "$pkg/docs/start/agent-os-alpha.md"
 
