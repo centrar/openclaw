@@ -349,7 +349,7 @@ describe("scripts/docker/full-local", () => {
         writeContainerConfigOverlay: true,
       });
       const overlay = JSON.parse(readFileSync(runtime.facts.containerConfigPathHost, "utf8")) as {
-        gateway: { auth: { password?: string; token?: string } };
+        gateway: { auth: { password?: string; token?: string }; mode: string };
       };
 
       expect(runtime.env.OPENCLAW_GATEWAY_PASSWORD).toBe("gateway-password");
@@ -358,6 +358,7 @@ describe("scripts/docker/full-local", () => {
       expect(runtime.facts.gatewayPasswordConfigured).toBe(true);
       expect(runtime.facts.gatewayTokenConfigured).toBe(false);
       expect(validateFullLocalRuntime(runtime.facts, runtime.env)).toEqual([]);
+      expect(overlay.gateway.mode).toBe("local");
       expect(overlay.gateway.auth.password).toBe("gateway-password");
       expect(overlay.gateway.auth.token).toBeUndefined();
     } finally {

@@ -1778,8 +1778,9 @@ export function buildFullLocalContainerConfig(config, params) {
   const gatewayToken = cleanString(params.gatewayToken);
   const gatewayPassword = cleanString(params.gatewayPassword);
   const gatewayAuthMode = cleanString(params.gatewayAuthMode)?.toLowerCase();
+  const gateway = ensureRecord(next, "gateway");
+  gateway.mode = "local";
   if (gatewayAuthMode || gatewayToken || gatewayPassword) {
-    const gateway = ensureRecord(next, "gateway");
     const auth = ensureRecord(gateway, "auth");
     const tokenAllowed =
       gatewayAuthMode !== "password" &&
