@@ -213,7 +213,7 @@ node scripts/agents/agent-os-agent-manager.mjs apply --output .artifacts/agent-o
 node scripts/agents/agent-os-agent-manager.mjs smoke --all-managed --output .artifacts/agent-os-agent-manager-smoke.json
 ```
 
-The manager writes an `agent-os.agent-manager.v1` catalog and an `agent-os.agent-manager-smoke.v1` control-plane smoke artifact. That proves the repo can discover, classify, route, and contract-smoke managed entries. It does not execute arbitrary local scripts or claim every discovered agent has completed a real user task. Per-agent live delivery still needs dispatcher, adapter, or full-local proof for the selected worker.
+The manager writes an `agent-os.agent-manager.v1` catalog and an `agent-os.agent-manager-smoke.v1` control-plane smoke artifact. That proves the repo can discover, classify, route, and contract-smoke managed entries. It does not execute arbitrary local scripts or claim native agent-code execution. Use the delivery proof below for the stronger per-agent route-handler delivery claim.
 
 Run the delivery proof when you need to prove or reject the stronger claim that every discovered entry can deliver:
 
@@ -223,7 +223,9 @@ node scripts/agents/agent-os-agent-delivery-proof.mjs prove --managed-only --req
 node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-live --output .artifacts/agent-os-live-delivery-proof.json --format summary
 ```
 
-The first command writes a proof result for every discovered entry. The second fails closed unless every selected managed entry has contract-delivery proof. The third fails closed unless every selected entry has real live execution proof. Until live executors exist for each route, `--require-live` is expected to fail and should be treated as the honest release blocker for any "all agents work and deliver" claim.
+The first command writes a proof result for every discovered entry. The second fails closed unless every selected managed entry has contract-delivery proof. The third fails closed unless every selected entry has live delivery proof through a bounded Agent OS route handler.
+
+A passing `--require-live` run proves every selected entry accepted an Agent OS ticket, produced an artifact, and emitted proof through its native route or supervised import/quarantine route. It does not prove arbitrary local agent code was executed; proof events include that distinction so stale paths and quarantined surfaces remain visible.
 
 External framework adapters should target the Agent OS contract rather than bypass it:
 

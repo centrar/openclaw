@@ -47,7 +47,7 @@ node scripts/agents/agent-os-agent-delivery-proof.mjs prove --managed-only --req
 node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-live --output .artifacts/agent-os-live-delivery-proof.json --format summary
 ```
 
-Contract delivery proves the Agent OS can select the entry, issue a ticket contract, write a proof artifact, and emit an Agent OS proof event. Live delivery is stricter: the agent or adapter itself must execute a low-impact task. Do not market an agent as working until the live proof passes for that agent.
+Contract delivery proves the Agent OS can select the entry, issue a ticket contract, write a proof artifact, and emit an Agent OS proof event. Live delivery runs a bounded route handler for each selected entry; native routes, supervised import routes, and quarantine routes all emit their delivery mode in the proof event. Do not market that as arbitrary local agent-code execution unless a separate native executor proof exists for that agent.
 
 Check whether the profiles are installed in your OpenClaw config:
 

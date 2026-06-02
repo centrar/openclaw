@@ -102,11 +102,12 @@ describe("agent os agent manager", () => {
       });
       expect(plan.schemaVersion).toBe(AGENT_OS_AGENT_MANAGER_SCHEMA_VERSION);
       expect(plan.summary).toMatchObject({
-        blocked: 2,
-        candidates: 4,
-        controlPlaneManaged: 4,
+        blocked: 0,
+        candidates: 0,
+        controlPlaneManaged: 10,
         dormant: 0,
         liveDeliveryProven: 0,
+        pathWarnings: 2,
         totalUnique: 10,
       });
 
@@ -127,14 +128,15 @@ describe("agent os agent manager", () => {
         route: "skill-adapter",
       });
       expect(byId.get("native_agent")).toMatchObject({
-        action: "review-import-candidate",
-        managerState: "candidate",
+        action: "manage-through-supervisor",
+        managerState: "managed",
         needsOperatorApproval: true,
-        route: "native-bridge-import",
+        route: "native-bridge-supervisor",
       });
       expect(byId.get("missing_tool")).toMatchObject({
-        action: "repair-adapter-path",
-        managerState: "blocked",
+        action: "manage-through-quarantine-supervisor",
+        managerState: "managed-with-warnings",
+        route: "tool-adapter",
       });
 
       const catalog = buildManagedAgentCatalog({
@@ -142,12 +144,19 @@ describe("agent os agent manager", () => {
         plan,
       });
       expect(catalog.managedAgents.map((agent) => agent.id).sort()).toEqual([
+        "dormant_partner",
         "main",
+        "missing_tool",
+        "native_agent",
+        "orphan_agent",
         "research_agent",
+        "security_bouncer_agent",
         "upload_tool",
         "weather",
+        "workspace_only",
       ]);
-      expect(catalog.importCandidates.map((agent) => agent.id)).toContain("native_agent");
+      expect(catalog.importCandidates).toEqual([]);
+      expect(catalog.blockedAgents).toEqual([]);
       expect(catalog.proofClaim).toMatchObject({
         liveDelivery: false,
         managementCatalog: true,
@@ -174,7 +183,7 @@ describe("agent os agent manager", () => {
         ]),
       ).toBe(0);
       const catalog = JSON.parse(readFileSync(catalogPath, "utf8"));
-      expect(catalog.managedAgents).toHaveLength(4);
+      expect(catalog.managedAgents).toHaveLength(10);
       expect(catalog.proofClaim.liveDelivery).toBe(false);
 
       expect(
@@ -194,11 +203,11 @@ describe("agent os agent manager", () => {
       const smoke = JSON.parse(readFileSync(smokePath, "utf8"));
       expect(smoke.schemaVersion).toBe(AGENT_OS_AGENT_MANAGER_SMOKE_SCHEMA_VERSION);
       expect(smoke.summary).toMatchObject({
-        controlPlaneManaged: 4,
+        controlPlaneManaged: 10,
         liveDeliveryProven: 0,
-        smoked: 4,
+        smoked: 10,
       });
-      expect(smoke.summary.byStatus).toEqual({ PASS: 4 });
+      expect(smoke.summary.byStatus).toEqual({ PASS: 8, WARN: 2 });
       expect(smoke.results[0]).toMatchObject({
         liveDeliveryProven: false,
         proofEvent: { schemaVersion: "agent-os.proof-event.v1" },
@@ -214,7 +223,7 @@ describe("agent os agent manager", () => {
     }
   });
 
-  it("smokes a selected import candidate as a warning instead of claiming live delivery", () => {
+  it("supervises a selected import surface without claiming live code execution", () => {
     const fixture = createFixture();
     try {
       const smoke = createAgentManagerSmoke({
@@ -226,15 +235,15 @@ describe("agent os agent manager", () => {
         runId: "candidate-run",
       });
       expect(smoke.summary).toMatchObject({
-        controlPlaneManaged: 0,
+        controlPlaneManaged: 1,
         liveDeliveryProven: 0,
         smoked: 1,
       });
-      expect(smoke.summary.byStatus).toEqual({ WARN: 1 });
+      expect(smoke.summary.byStatus).toEqual({ PASS: 1 });
       expect(smoke.results[0]).toMatchObject({
         id: "native_agent",
-        route: "native-bridge-import",
-        status: "WARN",
+        route: "native-bridge-supervisor",
+        status: "PASS",
       });
     } finally {
       rmSync(fixture.root, { force: true, recursive: true });

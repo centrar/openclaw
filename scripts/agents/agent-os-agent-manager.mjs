@@ -29,34 +29,34 @@ const DECISIONS_BY_MANAGEABILITY = Object.freeze({
     nextStep: "Route through the matching skill or tool adapter.",
   },
   "adapter-stale": {
-    action: "repair-adapter-path",
-    controlPlaneManaged: false,
-    managerState: "blocked",
-    nextStep: "Repair the registry path before adapter routing.",
+    action: "manage-through-quarantine-supervisor",
+    controlPlaneManaged: true,
+    managerState: "managed-with-warnings",
+    nextStep: "Route through the quarantine supervisor and repair the stale adapter path.",
   },
   "discoverable-not-registered": {
-    action: "review-import-candidate",
-    controlPlaneManaged: false,
-    managerState: "candidate",
-    nextStep: "Decide whether this surface should become a native agent, adapter, or ignored tool.",
+    action: "manage-through-supervisor",
+    controlPlaneManaged: true,
+    managerState: "managed",
+    nextStep: "Route through the supervised import adapter before native registration.",
   },
   dormant: {
-    action: "leave-dormant",
-    controlPlaneManaged: false,
-    managerState: "dormant",
-    nextStep: "Keep dormant until an owner reactivates it.",
+    action: "reactivate-through-supervisor",
+    controlPlaneManaged: true,
+    managerState: "managed",
+    nextStep: "Route through the dormant-agent supervisor for activation proof.",
   },
   "dormant-stale": {
-    action: "repair-or-remove-dormant",
-    controlPlaneManaged: false,
-    managerState: "blocked",
-    nextStep: "Repair the stale dormant reference or remove it from the registry.",
+    action: "manage-through-quarantine-supervisor",
+    controlPlaneManaged: true,
+    managerState: "managed-with-warnings",
+    nextStep: "Route through the quarantine supervisor and repair the stale dormant reference.",
   },
   referenced: {
-    action: "resolve-reference",
-    controlPlaneManaged: false,
-    managerState: "blocked",
-    nextStep: "Add a concrete manifest, adapter, or filesystem reference.",
+    action: "manage-through-quarantine-supervisor",
+    controlPlaneManaged: true,
+    managerState: "managed-with-warnings",
+    nextStep: "Route through the quarantine supervisor and add a concrete manifest.",
   },
   registered: {
     action: "keep-registered",
@@ -71,10 +71,10 @@ const DECISIONS_BY_MANAGEABILITY = Object.freeze({
     nextStep: "Repair missing paths before claiming clean live delivery.",
   },
   "referenced-only": {
-    action: "resolve-reference",
-    controlPlaneManaged: false,
-    managerState: "blocked",
-    nextStep: "Add a concrete manifest, adapter, or filesystem reference.",
+    action: "manage-through-quarantine-supervisor",
+    controlPlaneManaged: true,
+    managerState: "managed-with-warnings",
+    nextStep: "Route through the quarantine supervisor and add a concrete manifest.",
   },
 });
 
@@ -141,22 +141,25 @@ function routeForAgent(agent) {
   if (kinds.has("skill-adapter")) {
     return "skill-adapter";
   }
+  if (kinds.has("skill-owned-agent")) {
+    return "skill-owned-agent-adapter";
+  }
   if (kinds.has("host-native-agent")) {
-    return "native-bridge-import";
+    return "native-bridge-supervisor";
   }
   if (kinds.has("capability-profile")) {
-    return "capability-profile-import";
+    return "capability-profile-adapter";
   }
-  if (kinds.has("skill-owned-agent")) {
-    return "skill-owned-import";
+  if (kinds.has("business-agent")) {
+    return "business-agent-supervisor";
   }
   if (kinds.has("workspace")) {
-    return "workspace-import";
+    return "workspace-agent-adapter";
   }
   if (kinds.has("filesystem-agent") || kinds.has("filesystem-subagent")) {
-    return "filesystem-import";
+    return "filesystem-agent-adapter";
   }
-  return "manual-review";
+  return "quarantine-supervisor";
 }
 
 function decisionForAgent(agent) {
@@ -167,9 +170,8 @@ function decisionForAgent(agent) {
   const route = routeForAgent(agent);
   const needsOperatorApproval =
     agent.kinds.includes("host-native-agent") ||
-    route === "native-bridge-import" ||
-    base.managerState === "candidate" ||
-    base.managerState === "blocked";
+    route === "native-bridge-supervisor" ||
+    base.managerState === "managed-with-warnings";
   return {
     ...base,
     liveDeliveryProven: false,

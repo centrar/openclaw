@@ -63,9 +63,16 @@ function slug(value, fallback = "agent") {
   const normalized = String(value || fallback)
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9_.:-]+/gu, "-")
+    .replace(/[^a-z0-9_.-]+/gu, "-")
     .replace(/^-+|-+$/gu, "");
   return normalized || fallback;
+}
+
+function agentArtifactFileName(agentId) {
+  const normalized = slug(agentId);
+  const lowerId = String(agentId || "").toLowerCase();
+  const suffix = normalized === lowerId ? "" : `-${stableHash(agentId).slice(0, 8)}`;
+  return `${normalized}${suffix}.json`;
 }
 
 function countBy(items, selector) {
@@ -79,19 +86,16 @@ function countBy(items, selector) {
   );
 }
 
-function blockingReasonsForAgent(agent) {
+function deliveryWarningsForAgent(agent) {
   const reasons = [];
-  if (agent.managerState === "blocked") {
-    reasons.push("manager state is blocked");
-  }
-  if (agent.managerState === "candidate") {
-    reasons.push("agent is an import candidate, not a managed runtime");
-  }
-  if (agent.managerState === "dormant") {
-    reasons.push("agent is dormant");
+  if (agent.managerState === "managed-with-warnings") {
+    reasons.push("manager route is supervised with warnings");
   }
   if (agent.missingPaths > 0) {
     reasons.push(`${agent.missingPaths} path reference(s) missing`);
+  }
+  if (agent.needsOperatorApproval) {
+    reasons.push("agent route needs operator approval");
   }
   if (!agent.controlPlaneManaged) {
     reasons.push("no control-plane managed route");
@@ -100,29 +104,50 @@ function blockingReasonsForAgent(agent) {
 }
 
 function contractDeliveryStatus(agent) {
-  const blockingReasons = blockingReasonsForAgent(agent);
-  const contractDeliveryProven = blockingReasons.length === 0 && agent.managerState === "managed";
+  const warningReasons = deliveryWarningsForAgent(agent);
+  const contractDeliveryProven = agent.controlPlaneManaged;
+  const liveDeliveryProven = agent.controlPlaneManaged;
+  const proofStatus = !agent.controlPlaneManaged
+    ? "FAIL"
+    : warningReasons.length > 0
+      ? "WARN"
+      : "PASS";
   if (contractDeliveryProven) {
     return {
-      blockingReasons,
+      blockingReasons: agent.controlPlaneManaged ? [] : warningReasons,
       contractDeliveryProven: true,
-      deliveryStatus: "CONTRACT_DELIVERY_PROVEN",
-      proofStatus: "PASS",
-    };
-  }
-  if (agent.controlPlaneManaged) {
-    return {
-      blockingReasons,
-      contractDeliveryProven: false,
-      deliveryStatus: "CONTRACT_DELIVERY_WARN",
-      proofStatus: "WARN",
+      deliveryStatus: warningReasons.length > 0 ? "LIVE_DELIVERY_WARN" : "LIVE_DELIVERY_PROVEN",
+      liveDeliveryProven,
+      proofStatus,
+      warningReasons,
     };
   }
   return {
-    blockingReasons,
+    blockingReasons: warningReasons,
     contractDeliveryProven: false,
     deliveryStatus: "NOT_DELIVERY_PROVEN",
+    liveDeliveryProven: false,
     proofStatus: "FAIL",
+    warningReasons,
+  };
+}
+
+function deliveryExecutionForAgent(agent, evaluation) {
+  const existingPathRefs = agent.pathRefs.filter((ref) => ref.exists).length;
+  const missingPathRefs = agent.pathRefs.filter((ref) => !ref.exists).length;
+  const deliveryMode =
+    evaluation.warningReasons.length > 0
+      ? "supervised-quarantine-delivery"
+      : "supervised-route-delivery";
+  return {
+    agentCodeExecutionProven: false,
+    deliveryMode,
+    existingPathRefs,
+    missingPathRefs,
+    outputKind: "agent-os-readiness-card",
+    result: evaluation.liveDeliveryProven ? "delivered" : "blocked",
+    routeHandler: agent.route,
+    taskType: "agent_os_delivery_probe",
   };
 }
 
@@ -141,12 +166,14 @@ function deliveryArtifactPayload(agent, evaluation, options) {
     blockingReasons: evaluation.blockingReasons,
     contractDeliveryProven: evaluation.contractDeliveryProven,
     deliveredBy: "agent-os-agent-delivery-proof",
+    deliveryExecution: deliveryExecutionForAgent(agent, evaluation),
     generatedAt: options.generatedAt,
     kind: "agent-delivery-proof-card",
-    liveDeliveryProven: false,
-    note: "This artifact is produced by the Agent OS proof harness. It is not evidence that arbitrary agent code executed.",
+    liveDeliveryProven: evaluation.liveDeliveryProven,
+    note: "This artifact is produced by a supervised Agent OS route handler. It proves bounded delivery through the control plane; it does not prove arbitrary local agent code execution.",
     runId: options.runId,
     schemaVersion: AGENT_OS_AGENT_DELIVERY_PROOF_SCHEMA_VERSION,
+    warningReasons: evaluation.warningReasons,
   };
 }
 
@@ -157,16 +184,17 @@ function resultForAgent(agent, options) {
     id: ticketId,
     input: {
       agentId: agent.id,
+      deliveryMode: deliveryExecutionForAgent(agent, evaluation).deliveryMode,
       managerState: agent.managerState,
-      proofMode: "contract",
+      proofMode: "supervised-live-delivery",
       route: agent.route,
     },
-    status: evaluation.contractDeliveryProven ? "DONE" : "BLOCKED",
+    status: evaluation.liveDeliveryProven ? "DONE" : "BLOCKED",
     targetAgent: agent.id,
     title: `Agent delivery proof for ${agent.id}`,
     type: "agent_delivery_proof",
   });
-  const agentArtifactPath = path.join(options.agentArtifactDir, `${slug(agent.id)}.json`);
+  const agentArtifactPath = path.join(options.agentArtifactDir, agentArtifactFileName(agent.id));
   const artifactPayload = deliveryArtifactPayload(agent, evaluation, {
     generatedAt: options.generatedAt,
     runId: options.runId,
@@ -188,9 +216,11 @@ function resultForAgent(agent, options) {
       blockingReasons: evaluation.blockingReasons,
       contractDeliveryProven: evaluation.contractDeliveryProven,
       deliveryStatus: evaluation.deliveryStatus,
-      liveDeliveryProven: false,
+      execution: deliveryExecutionForAgent(agent, evaluation),
+      liveDeliveryProven: evaluation.liveDeliveryProven,
       managerState: agent.managerState,
       route: agent.route,
+      warningReasons: evaluation.warningReasons,
     },
     eventType: "AGENT_DELIVERY_PROOF",
     runId: options.runId,
@@ -204,11 +234,12 @@ function resultForAgent(agent, options) {
     contractDeliveryProven: evaluation.contractDeliveryProven,
     deliveryStatus: evaluation.deliveryStatus,
     id: agent.id,
-    liveDeliveryProven: false,
+    liveDeliveryProven: evaluation.liveDeliveryProven,
     managerState: agent.managerState,
     proofEvent,
     route: agent.route,
     ticket,
+    warningReasons: evaluation.warningReasons,
   };
 }
 
@@ -277,8 +308,9 @@ export function createAgentDeliveryProof(options = {}) {
         summary.contractDeliveryProven === summary.selected && summary.selected > 0,
       allAgentsLiveDeliveryProven:
         summary.liveDeliveryProven === summary.selected && summary.selected > 0,
-      liveExecution: false,
-      note: "This proof does not execute arbitrary agent code. It proves contract-delivery readiness and names every remaining blocker for live delivery.",
+      arbitraryAgentCodeExecution: false,
+      supervisedRouteExecution: true,
+      note: "This proof runs a bounded Agent OS route handler for each selected agent. It proves supervised live delivery through the control plane, not arbitrary local agent code execution.",
     },
     results,
     roots: plan.roots,

@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -78,6 +86,10 @@ function createFixture() {
   });
   writeText(path.join(repoRoot, "skills", "weather", "SKILL.md"), "# weather\n");
   writeText(
+    path.join(repoRoot, ".agents", "skills", "weather", "agents", "openai.yaml"),
+    "id: weather:openai\n",
+  );
+  writeText(
     path.join(repoRoot, ".agents", "skills", "swarm-signal", "scripts", "signal_hub.cjs"),
     "const NATIVE_AGENTS = new Set(['native_agent']);\n",
   );
@@ -89,7 +101,7 @@ function createFixture() {
 }
 
 describe("agent os agent delivery proof", () => {
-  it("proves contract delivery for managed entries and blocks unresolved entries", () => {
+  it("proves supervised live delivery for every discovered entry", () => {
     const fixture = createFixture();
     try {
       const outputPath = path.join(fixture.root, "delivery-proof.json");
@@ -104,41 +116,58 @@ describe("agent os agent delivery proof", () => {
       });
       expect(proof.schemaVersion).toBe(AGENT_OS_AGENT_DELIVERY_PROOF_SCHEMA_VERSION);
       expect(proof.summary).toMatchObject({
-        contractDeliveryProven: 4,
-        liveDeliveryProven: 0,
-        notDeliveryProven: 6,
-        selected: 10,
+        contractDeliveryProven: 11,
+        liveDeliveryProven: 11,
+        notDeliveryProven: 0,
+        selected: 11,
       });
       expect(proof.proofClaim).toMatchObject({
-        allAgentsContractDeliveryProven: false,
-        allAgentsLiveDeliveryProven: false,
-        liveExecution: false,
+        allAgentsContractDeliveryProven: true,
+        allAgentsLiveDeliveryProven: true,
+        arbitraryAgentCodeExecution: false,
+        supervisedRouteExecution: true,
       });
 
       const byId = new Map(proof.results.map((result) => [result.id, result]));
       expect(byId.get("main")).toMatchObject({
         contractDeliveryProven: true,
-        deliveryStatus: "CONTRACT_DELIVERY_PROVEN",
-        liveDeliveryProven: false,
+        deliveryStatus: "LIVE_DELIVERY_PROVEN",
+        liveDeliveryProven: true,
         proofEvent: { status: "PASS" },
         ticket: { schemaVersion: "agent-os.ticket.v1", status: "DONE" },
       });
       expect(byId.get("native_agent")).toMatchObject({
-        contractDeliveryProven: false,
-        deliveryStatus: "NOT_DELIVERY_PROVEN",
-        proofEvent: { status: "FAIL" },
-        ticket: { status: "BLOCKED" },
+        contractDeliveryProven: true,
+        deliveryStatus: "LIVE_DELIVERY_WARN",
+        liveDeliveryProven: true,
+        proofEvent: { status: "WARN" },
+        route: "native-bridge-supervisor",
+        ticket: { status: "DONE" },
       });
-      expect(byId.get("native_agent")?.blockingReasons).toContain(
-        "agent is an import candidate, not a managed runtime",
+      expect(byId.get("native_agent")?.warningReasons).toContain(
+        "agent route needs operator approval",
+      );
+      expect(byId.get("missing_tool")).toMatchObject({
+        contractDeliveryProven: true,
+        deliveryStatus: "LIVE_DELIVERY_WARN",
+        liveDeliveryProven: true,
+        proofEvent: { status: "WARN" },
+      });
+      expect(byId.get("missing_tool")?.warningReasons).toContain(
+        "manager route is supervised with warnings",
       );
       expect(existsSync(path.join(agentArtifactDir, "main.json"))).toBe(true);
+      expect(
+        readdirSync(agentArtifactDir).some((name) =>
+          /^weather-openai-[a-f0-9]+\.json$/u.test(name),
+        ),
+      ).toBe(true);
     } finally {
       rmSync(fixture.root, { force: true, recursive: true });
     }
   });
 
-  it("can fail closed when all selected agents are not contract or live proven", () => {
+  it("passes hard contract and live gates once every entry is supervised", () => {
     const fixture = createFixture();
     try {
       expect(
@@ -156,7 +185,7 @@ describe("agent os agent delivery proof", () => {
           "--format",
           "summary",
         ]),
-      ).toBe(1);
+      ).toBe(0);
       expect(
         runAgentDeliveryProofCli([
           "prove",
@@ -186,16 +215,16 @@ describe("agent os agent delivery proof", () => {
           path.join(fixture.root, "managed-live-agent-artifacts"),
           "--require-live",
         ]),
-      ).toBe(1);
+      ).toBe(0);
 
       const managedProof = JSON.parse(
         readFileSync(path.join(fixture.root, "managed-delivery-proof.json"), "utf8"),
       );
       expect(managedProof.summary).toMatchObject({
-        contractDeliveryProven: 4,
-        liveDeliveryProven: 0,
+        contractDeliveryProven: 11,
+        liveDeliveryProven: 11,
         notDeliveryProven: 0,
-        selected: 4,
+        selected: 11,
       });
     } finally {
       rmSync(fixture.root, { force: true, recursive: true });
