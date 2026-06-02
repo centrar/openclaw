@@ -27,6 +27,7 @@ import {
   chooseHostPublishPort,
   chooseSentinelPort,
   collectProof,
+  commandWritesContainerConfigOverlay,
   deriveFullLocalRuntime,
   dockerCommandShouldRetry,
   evaluateAgentOsGoldenE2E,
@@ -3667,6 +3668,13 @@ describe("scripts/docker/full-local", () => {
       },
     };
     expect(evaluateProof(withoutBridge).ok).toBe(false);
+  });
+
+  it("rewrites the generated container config only during full-local up", () => {
+    expect(commandWritesContainerConfigOverlay("up")).toBe(true);
+    for (const command of ["bench", "golden", "memory", "proof", "sentinel", "smoke", "status"]) {
+      expect(commandWritesContainerConfigOverlay(command), command).toBe(false);
+    }
   });
 
   it("captures bounded failed-service logs in failed full-local readiness proof", async () => {

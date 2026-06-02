@@ -4752,6 +4752,10 @@ Useful env:
 `);
 }
 
+export function commandWritesContainerConfigOverlay(command) {
+  return command === "up";
+}
+
 async function main(argv = process.argv.slice(2)) {
   const command = argv[0] ?? "help";
   const cwd = resolveRepoRoot();
@@ -4773,10 +4777,10 @@ async function main(argv = process.argv.slice(2)) {
     return down.status ?? 1;
   }
 
-  const readOnlyProofCommand = command === "proof" || command === "status";
+  const shouldWriteContainerConfigOverlay = commandWritesContainerConfigOverlay(command);
   const runtime = await deriveFullLocalRuntime({
     cwd,
-    writeContainerConfigOverlay: !readOnlyProofCommand,
+    writeContainerConfigOverlay: shouldWriteContainerConfigOverlay,
   });
   reuseExistingPublishedPorts(runtime, cwd);
 
