@@ -46,10 +46,10 @@ node scripts/agents/agent-os-agent-purpose-catalog.mjs audit --output .artifacts
 node scripts/agents/agent-os-agent-delivery-proof.mjs prove --output .artifacts/agent-os-agent-delivery-proof.json --format summary
 node scripts/agents/agent-os-agent-delivery-proof.mjs prove --managed-only --require-contract --output .artifacts/agent-os-managed-delivery-proof.json --format summary
 node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-live --output .artifacts/agent-os-live-delivery-proof.json --format summary
-node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-live --require-purpose --output .artifacts/agent-os-purpose-live-delivery-proof.json --format summary
+node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-callable --require-live --require-purpose --output .artifacts/agent-os-purpose-live-delivery-proof.json --format summary
 ```
 
-The purpose catalog binds each discovered entry to a task objective from existing definitions and allowlisted local metadata before delivery proof runs. Contract delivery proves the Agent OS can select the entry, issue a ticket contract, write a proof artifact, and emit an Agent OS proof event. Live delivery runs a bounded route handler for each selected entry; native routes, supervised import routes, and quarantine routes all emit their delivery mode in the proof event. Use `--require-purpose` when every selected entry must have source-backed purpose evidence. Do not market that as arbitrary local agent-code execution unless a separate native executor proof exists for that agent.
+The purpose catalog binds each discovered entry to a task objective from existing definitions and allowlisted local metadata before delivery proof runs. Contract delivery proves the Agent OS can select the entry, issue a ticket contract, write a proof artifact, and emit an Agent OS proof event. Live delivery runs a bounded route handler for each selected entry; native routes, supervised import routes, and quarantine routes all emit their delivery mode in the proof event. Use `--require-callable --require-live --require-purpose` when every selected entry must be callable and have source-backed purpose evidence. `CALLABLE_APPROVAL_REQUIRED` entries are deliverable only after the configured approval gate. Do not market that as arbitrary local agent-code execution unless a separate native executor proof exists for that agent.
 
 Prove arbitrary native/local code execution one selected agent at a time:
 

@@ -116,18 +116,27 @@ describe("agent os agent delivery proof", () => {
       });
       expect(proof.schemaVersion).toBe(AGENT_OS_AGENT_DELIVERY_PROOF_SCHEMA_VERSION);
       expect(proof.summary).toMatchObject({
+        approvalRequired: 3,
+        callableDeliveryProven: 11,
         contractDeliveryProven: 11,
         liveDeliveryProven: 11,
+        notCallable: 0,
         notDeliveryProven: 0,
         purposeDefined: 8,
         selected: 11,
         taskSpecificDeliveryProven: 11,
       });
+      expect(proof.summary.byCallabilityStatus).toMatchObject({
+        CALLABLE_APPROVAL_REQUIRED: 3,
+        CALLABLE_READY: 8,
+      });
       expect(proof.proofClaim).toMatchObject({
+        allAgentsCallableDeliveryProven: true,
         allAgentsContractDeliveryProven: true,
         allAgentsLiveDeliveryProven: true,
         allAgentsPurposeDefined: false,
         allAgentsPurposeMapped: true,
+        allAgentsUnattendedDeliveryReady: false,
         arbitraryAgentCodeExecution: false,
         supervisedRouteExecution: true,
       });
@@ -145,6 +154,8 @@ describe("agent os agent delivery proof", () => {
         ticket: { schemaVersion: "agent-os.ticket.v1", status: "DONE" },
       });
       expect(byId.get("native_agent")).toMatchObject({
+        callableDeliveryProven: true,
+        callabilityStatus: "CALLABLE_APPROVAL_REQUIRED",
         contractDeliveryProven: true,
         deliveryStatus: "LIVE_DELIVERY_WARN",
         liveDeliveryProven: true,
@@ -156,6 +167,8 @@ describe("agent os agent delivery proof", () => {
         "agent route needs operator approval",
       );
       expect(byId.get("missing_tool")).toMatchObject({
+        callableDeliveryProven: true,
+        callabilityStatus: "CALLABLE_APPROVAL_REQUIRED",
         contractDeliveryProven: true,
         deliveryStatus: "LIVE_DELIVERY_WARN",
         liveDeliveryProven: true,
@@ -190,6 +203,7 @@ describe("agent os agent delivery proof", () => {
           "--agent-artifacts",
           path.join(fixture.root, "all-agent-artifacts"),
           "--require-contract",
+          "--require-callable",
           "--format",
           "summary",
         ]),
@@ -244,8 +258,10 @@ describe("agent os agent delivery proof", () => {
         readFileSync(path.join(fixture.root, "managed-delivery-proof.json"), "utf8"),
       );
       expect(managedProof.summary).toMatchObject({
+        callableDeliveryProven: 11,
         contractDeliveryProven: 11,
         liveDeliveryProven: 11,
+        notCallable: 0,
         notDeliveryProven: 0,
         selected: 11,
       });

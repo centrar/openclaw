@@ -226,12 +226,12 @@ Run the delivery proof when you need to prove or reject the stronger claim that 
 node scripts/agents/agent-os-agent-delivery-proof.mjs prove --output .artifacts/agent-os-agent-delivery-proof.json --format summary
 node scripts/agents/agent-os-agent-delivery-proof.mjs prove --managed-only --require-contract --output .artifacts/agent-os-managed-delivery-proof.json --format summary
 node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-live --output .artifacts/agent-os-live-delivery-proof.json --format summary
-node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-live --require-purpose --output .artifacts/agent-os-purpose-live-delivery-proof.json --format summary
+node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-callable --require-live --require-purpose --output .artifacts/agent-os-purpose-live-delivery-proof.json --format summary
 ```
 
 The first command writes a proof result for every discovered entry. The second fails closed unless every selected managed entry has contract-delivery proof. The third fails closed unless every selected entry has live delivery proof through a bounded Agent OS route handler. The fourth also fails closed unless every selected entry has source-backed purpose evidence.
 
-A passing `--require-live` run proves every selected entry accepted an Agent OS ticket, produced an artifact, and emitted proof through its native route or supervised import/quarantine route. It does not prove arbitrary local agent code was executed; proof events include that distinction so stale paths and quarantined surfaces remain visible.
+A passing `--require-callable --require-live --require-purpose` run proves every selected entry accepted a purpose-specific Agent OS ticket, produced an artifact, emitted proof through its native route or supervised import/quarantine route, and is callable when selected. `CALLABLE_APPROVAL_REQUIRED` entries are deliverable only after the configured approval gate. This does not prove arbitrary local agent code was executed; proof events include that distinction so stale paths and quarantined surfaces remain visible.
 
 Prove one selected local implementation with the native execution gate:
 

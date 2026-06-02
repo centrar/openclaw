@@ -179,8 +179,34 @@ function deliveryExecutionForAgent(agent, evaluation, purpose) {
   };
 }
 
+function callabilityForAgent(evaluation) {
+  if (!evaluation.liveDeliveryProven) {
+    return {
+      callableDeliveryProven: false,
+      callabilityStatus: "NOT_CALLABLE",
+    };
+  }
+  if (evaluation.warningReasons.includes("agent route needs operator approval")) {
+    return {
+      callableDeliveryProven: true,
+      callabilityStatus: "CALLABLE_APPROVAL_REQUIRED",
+    };
+  }
+  if (evaluation.warningReasons.length > 0) {
+    return {
+      callableDeliveryProven: true,
+      callabilityStatus: "CALLABLE_WITH_WARNINGS",
+    };
+  }
+  return {
+    callableDeliveryProven: true,
+    callabilityStatus: "CALLABLE_READY",
+  };
+}
+
 function deliveryArtifactPayload(agent, evaluation, options) {
   const task = options.purpose?.deliveryTask || fallbackDeliveryTask(agent);
+  const callability = callabilityForAgent(evaluation);
   return {
     agent: {
       capabilityFamilies: agent.capabilityFamilies,
@@ -194,6 +220,7 @@ function deliveryArtifactPayload(agent, evaluation, options) {
       ticketTypes: agent.ticketTypes,
     },
     blockingReasons: evaluation.blockingReasons,
+    callability,
     contractDeliveryProven: evaluation.contractDeliveryProven,
     deliveredBy: "agent-os-agent-delivery-proof",
     deliveryExecution: deliveryExecutionForAgent(agent, evaluation, options.purpose),
@@ -224,11 +251,13 @@ function resultForAgent(agent, options) {
   const evaluation = contractDeliveryStatus(agent);
   const deliveryExecution = deliveryExecutionForAgent(agent, evaluation, options.purpose);
   const task = options.purpose?.deliveryTask || fallbackDeliveryTask(agent);
+  const callability = callabilityForAgent(evaluation);
   const ticketId = `agent-delivery-${stableHash(agent.id).slice(0, 12)}`;
   const ticket = assertAgentOsTicket({
     id: ticketId,
     input: {
       agentId: agent.id,
+      callabilityStatus: callability.callabilityStatus,
       deliveryMode: deliveryExecution.deliveryMode,
       managerState: agent.managerState,
       proofMode: "supervised-live-delivery",
@@ -262,6 +291,8 @@ function resultForAgent(agent, options) {
     component: "agent-os-agent-delivery-proof",
     data: {
       blockingReasons: evaluation.blockingReasons,
+      callableDeliveryProven: callability.callableDeliveryProven,
+      callabilityStatus: callability.callabilityStatus,
       contractDeliveryProven: evaluation.contractDeliveryProven,
       deliveryStatus: evaluation.deliveryStatus,
       execution: deliveryExecution,
@@ -285,6 +316,8 @@ function resultForAgent(agent, options) {
   return {
     artifactContract,
     blockingReasons: evaluation.blockingReasons,
+    callableDeliveryProven: callability.callableDeliveryProven,
+    callabilityStatus: callability.callabilityStatus,
     contractDeliveryProven: evaluation.contractDeliveryProven,
     deliveryStatus: evaluation.deliveryStatus,
     deliveryTask: task,
@@ -319,14 +352,20 @@ function selectAgents(plan, options) {
 
 function summarizeResults(results) {
   return {
+    approvalRequired: results.filter(
+      (result) => result.callabilityStatus === "CALLABLE_APPROVAL_REQUIRED",
+    ).length,
+    byCallabilityStatus: countBy(results, (result) => result.callabilityStatus),
     byDeliveryStatus: countBy(results, (result) => result.deliveryStatus),
     byManagerState: countBy(results, (result) => result.managerState),
     byProofStatus: countBy(results, (result) => result.proofEvent.status),
     byPurposeSourceType: countBy(results, (result) => result.purposeSourceType),
     byTaskFamily: countBy(results, (result) => result.deliveryTask.taskFamily),
     byTaskType: countBy(results, (result) => result.deliveryTask.taskType),
+    callableDeliveryProven: results.filter((result) => result.callableDeliveryProven).length,
     contractDeliveryProven: results.filter((result) => result.contractDeliveryProven).length,
     liveDeliveryProven: results.filter((result) => result.liveDeliveryProven).length,
+    notCallable: results.filter((result) => !result.callableDeliveryProven).length,
     notDeliveryProven: results.filter((result) => !result.contractDeliveryProven).length,
     purposeDefined: results.filter((result) => result.purposeDefined).length,
     taskSpecificDeliveryProven: results.filter((result) => result.deliveryTask).length,
@@ -381,13 +420,17 @@ export function createAgentDeliveryProof(options = {}) {
     proofClaim: {
       allAgentsContractDeliveryProven:
         summary.contractDeliveryProven === summary.selected && summary.selected > 0,
+      allAgentsCallableDeliveryProven:
+        summary.callableDeliveryProven === summary.selected && summary.selected > 0,
       allAgentsLiveDeliveryProven:
         summary.liveDeliveryProven === summary.selected && summary.selected > 0,
       allAgentsPurposeDefined: summary.purposeDefined === summary.selected && summary.selected > 0,
       allAgentsPurposeMapped: summary.taskSpecificDeliveryProven === summary.selected,
+      allAgentsUnattendedDeliveryReady:
+        summary.byCallabilityStatus.CALLABLE_READY === summary.selected && summary.selected > 0,
       arbitraryAgentCodeExecution: false,
       supervisedRouteExecution: true,
-      note: "This proof runs a bounded, purpose-specific Agent OS route handler for each selected agent. It proves supervised live delivery through the control plane, not arbitrary local agent code execution.",
+      note: "This proof runs a bounded, purpose-specific Agent OS route handler for each selected agent. It proves supervised callable delivery through the control plane, not arbitrary local agent code execution. CALLABLE_APPROVAL_REQUIRED agents are deliverable only after the configured approval gate.",
     },
     results,
     roots: plan.roots,
@@ -410,6 +453,7 @@ function parseArgs(argv) {
     outputPath: DEFAULT_OUTPUT_PATH,
     repoRoot: process.cwd(),
     requireContract: false,
+    requireCallable: false,
     requireLive: false,
     requirePurpose: false,
   };
@@ -461,6 +505,8 @@ function parseArgs(argv) {
       options.managedOnly = true;
     } else if (arg === "--require-contract") {
       options.requireContract = true;
+    } else if (arg === "--require-callable") {
+      options.requireCallable = true;
     } else if (arg === "--require-live") {
       options.requireLive = true;
     } else if (arg === "--require-purpose") {
@@ -475,14 +521,21 @@ function parseArgs(argv) {
 function formatSummary(proof) {
   const lines = [
     `Agent delivery proof: ${proof.summary.selected} selected agents`,
+    `Callable delivery proven: ${proof.summary.callableDeliveryProven}`,
+    `Not callable: ${proof.summary.notCallable}`,
+    `Approval required: ${proof.summary.approvalRequired}`,
     `Contract delivery proven: ${proof.summary.contractDeliveryProven}`,
     `Not delivery proven: ${proof.summary.notDeliveryProven}`,
     `Live delivery proven: ${proof.summary.liveDeliveryProven}`,
     `Task-specific delivery proven: ${proof.summary.taskSpecificDeliveryProven}`,
     `Purpose defined from existing sources: ${proof.summary.purposeDefined}`,
     "",
-    "Delivery status:",
+    "Callability status:",
   ];
+  for (const [name, count] of Object.entries(proof.summary.byCallabilityStatus)) {
+    lines.push(`- ${name}: ${count}`);
+  }
+  lines.push("", "Delivery status:");
   for (const [name, count] of Object.entries(proof.summary.byDeliveryStatus)) {
     lines.push(`- ${name}: ${count}`);
   }
@@ -499,6 +552,9 @@ function formatSummary(proof) {
 }
 
 function exitCodeForRequirements(proof, options) {
+  if (options.requireCallable && !proof.proofClaim.allAgentsCallableDeliveryProven) {
+    return 1;
+  }
   if (options.requireLive && !proof.proofClaim.allAgentsLiveDeliveryProven) {
     return 1;
   }
