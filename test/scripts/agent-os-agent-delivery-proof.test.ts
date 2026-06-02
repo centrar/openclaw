@@ -119,11 +119,15 @@ describe("agent os agent delivery proof", () => {
         contractDeliveryProven: 11,
         liveDeliveryProven: 11,
         notDeliveryProven: 0,
+        purposeDefined: 8,
         selected: 11,
+        taskSpecificDeliveryProven: 11,
       });
       expect(proof.proofClaim).toMatchObject({
         allAgentsContractDeliveryProven: true,
         allAgentsLiveDeliveryProven: true,
+        allAgentsPurposeDefined: false,
+        allAgentsPurposeMapped: true,
         arbitraryAgentCodeExecution: false,
         supervisedRouteExecution: true,
       });
@@ -131,6 +135,10 @@ describe("agent os agent delivery proof", () => {
       const byId = new Map(proof.results.map((result) => [result.id, result]));
       expect(byId.get("main")).toMatchObject({
         contractDeliveryProven: true,
+        deliveryTask: {
+          taskFamily: "openclaw-config",
+          taskType: "main_purpose_probe",
+        },
         deliveryStatus: "LIVE_DELIVERY_PROVEN",
         liveDeliveryProven: true,
         proofEvent: { status: "PASS" },
@@ -167,7 +175,7 @@ describe("agent os agent delivery proof", () => {
     }
   });
 
-  it("passes hard contract and live gates once every entry is supervised", () => {
+  it("passes contract/live gates and fails the purpose gate when metadata is missing", () => {
     const fixture = createFixture();
     try {
       expect(
@@ -216,6 +224,21 @@ describe("agent os agent delivery proof", () => {
           "--require-live",
         ]),
       ).toBe(0);
+      expect(
+        runAgentDeliveryProofCli([
+          "prove",
+          "--repo",
+          fixture.repoRoot,
+          "--openclaw-home",
+          fixture.openclawHome,
+          "--managed-only",
+          "--output",
+          path.join(fixture.root, "managed-purpose-proof.json"),
+          "--agent-artifacts",
+          path.join(fixture.root, "managed-purpose-agent-artifacts"),
+          "--require-purpose",
+        ]),
+      ).toBe(1);
 
       const managedProof = JSON.parse(
         readFileSync(path.join(fixture.root, "managed-delivery-proof.json"), "utf8"),

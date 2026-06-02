@@ -85,6 +85,17 @@ describe("agent os agent inventory", () => {
         path.join(repoRoot, ".agents", "skills", "discrawl", "agents", "openai.yaml"),
         "id: discrawl_worker\nname: Discrawl Worker\n",
       );
+      writeText(
+        path.join(
+          repoRoot,
+          ".agents",
+          "skills",
+          "technical-documentation",
+          "agents",
+          "inventory-agent.md",
+        ),
+        "---\nname: inventory-agent\ndescription: Fast repo-surface discovery for docs audits.\n---\n",
+      );
       writeText(path.join(repoRoot, "skills", "weather", "SKILL.md"), "# weather\n");
       writeText(
         path.join(openclawHome, "skills", "developer-agency-enhanced", "SKILL.md"),
@@ -101,12 +112,12 @@ describe("agent os agent inventory", () => {
 
       const inventory = collectAgentInventory({ openclawHome, repoRoot });
       expect(inventory.schemaVersion).toBe(AGENT_OS_AGENT_INVENTORY_SCHEMA_VERSION);
-      expect(inventory.summary.totalUnique).toBe(12);
+      expect(inventory.summary.totalUnique).toBe(13);
       expect(inventory.summary.registered).toBe(2);
       expect(inventory.summary.byManageability).toMatchObject({
         "adapter-manageable": 3,
         "adapter-stale": 1,
-        "discoverable-not-registered": 5,
+        "discoverable-not-registered": 6,
         "dormant-stale": 1,
         registered: 2,
       });
@@ -133,6 +144,11 @@ describe("agent os agent inventory", () => {
       expect(byId.get("discrawl_worker")).toMatchObject({
         kinds: ["skill-owned-agent"],
         skills: ["discrawl"],
+      });
+      expect(byId.get("inventory-agent")).toMatchObject({
+        displayName: "inventory-agent",
+        kinds: ["skill-owned-agent"],
+        skills: ["technical-documentation"],
       });
       expect(byId.get("native_agent")).toMatchObject({
         kinds: ["host-native-agent"],

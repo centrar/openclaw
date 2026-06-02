@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildAgentManagementPlan } from "./agent-os-agent-manager.mjs";
+import { buildAgentPurposeCatalog } from "./agent-os-agent-purpose-catalog.mjs";
 
 const require = createRequire(import.meta.url);
 const {
@@ -132,9 +133,32 @@ function contractDeliveryStatus(agent) {
   };
 }
 
-function deliveryExecutionForAgent(agent, evaluation) {
+function fallbackDeliveryTask(agent) {
+  return {
+    expectedArtifacts: ["purpose-summary", "route-output", "proof-event"],
+    objective: `Deliver a safe purpose-specific probe for ${agent.id}.`,
+    permissions: {
+      approvals: agent.needsOperatorApproval ? ["operator-approval-for-sensitive-route"] : [],
+      filesystem: "read",
+      network: "none",
+      secrets: "none",
+    },
+    schemaVersion: "agent-os.agent-delivery-task.v1",
+    successCriteria: [
+      "accepts an Agent OS ticket",
+      "uses the purpose-specific route handler",
+      "writes the expected artifact contract",
+      "emits a proof event with source evidence",
+    ],
+    taskFamily: "general-agent",
+    taskType: "purpose_specific_probe",
+  };
+}
+
+function deliveryExecutionForAgent(agent, evaluation, purpose) {
   const existingPathRefs = agent.pathRefs.filter((ref) => ref.exists).length;
   const missingPathRefs = agent.pathRefs.filter((ref) => !ref.exists).length;
+  const task = purpose?.deliveryTask || fallbackDeliveryTask(agent);
   const deliveryMode =
     evaluation.warningReasons.length > 0
       ? "supervised-quarantine-delivery"
@@ -142,19 +166,25 @@ function deliveryExecutionForAgent(agent, evaluation) {
   return {
     agentCodeExecutionProven: false,
     deliveryMode,
+    expectedArtifacts: task.expectedArtifacts,
     existingPathRefs,
     missingPathRefs,
-    outputKind: "agent-os-readiness-card",
+    objective: task.objective,
+    outputKind: task.expectedArtifacts[0] || "purpose-summary",
+    purposeSourceType: purpose?.purposeSourceType || "fallback",
     result: evaluation.liveDeliveryProven ? "delivered" : "blocked",
     routeHandler: agent.route,
-    taskType: "agent_os_delivery_probe",
+    taskFamily: task.taskFamily,
+    taskType: task.taskType,
   };
 }
 
 function deliveryArtifactPayload(agent, evaluation, options) {
+  const task = options.purpose?.deliveryTask || fallbackDeliveryTask(agent);
   return {
     agent: {
       capabilityFamilies: agent.capabilityFamilies,
+      displayName: agent.displayName,
       id: agent.id,
       kinds: agent.kinds,
       managerState: agent.managerState,
@@ -166,11 +196,24 @@ function deliveryArtifactPayload(agent, evaluation, options) {
     blockingReasons: evaluation.blockingReasons,
     contractDeliveryProven: evaluation.contractDeliveryProven,
     deliveredBy: "agent-os-agent-delivery-proof",
-    deliveryExecution: deliveryExecutionForAgent(agent, evaluation),
+    deliveryExecution: deliveryExecutionForAgent(agent, evaluation, options.purpose),
+    deliveryTask: task,
     generatedAt: options.generatedAt,
     kind: "agent-delivery-proof-card",
     liveDeliveryProven: evaluation.liveDeliveryProven,
     note: "This artifact is produced by a supervised Agent OS route handler. It proves bounded delivery through the control plane; it does not prove arbitrary local agent code execution.",
+    purpose: options.purpose
+      ? {
+          defined: options.purpose.purposeDefined,
+          evidenceSources: options.purpose.evidenceSources.map((source) => ({
+            sourcePath: source.sourcePath,
+            sourceType: source.sourceType,
+            summary: source.summary,
+          })),
+          sourceType: options.purpose.purposeSourceType,
+          summary: options.purpose.purposeSummary,
+        }
+      : null,
     runId: options.runId,
     schemaVersion: AGENT_OS_AGENT_DELIVERY_PROOF_SCHEMA_VERSION,
     warningReasons: evaluation.warningReasons,
@@ -179,15 +222,19 @@ function deliveryArtifactPayload(agent, evaluation, options) {
 
 function resultForAgent(agent, options) {
   const evaluation = contractDeliveryStatus(agent);
+  const deliveryExecution = deliveryExecutionForAgent(agent, evaluation, options.purpose);
+  const task = options.purpose?.deliveryTask || fallbackDeliveryTask(agent);
   const ticketId = `agent-delivery-${stableHash(agent.id).slice(0, 12)}`;
   const ticket = assertAgentOsTicket({
     id: ticketId,
     input: {
       agentId: agent.id,
-      deliveryMode: deliveryExecutionForAgent(agent, evaluation).deliveryMode,
+      deliveryMode: deliveryExecution.deliveryMode,
       managerState: agent.managerState,
       proofMode: "supervised-live-delivery",
       route: agent.route,
+      taskFamily: task.taskFamily,
+      taskType: task.taskType,
     },
     status: evaluation.liveDeliveryProven ? "DONE" : "BLOCKED",
     targetAgent: agent.id,
@@ -197,6 +244,7 @@ function resultForAgent(agent, options) {
   const agentArtifactPath = path.join(options.agentArtifactDir, agentArtifactFileName(agent.id));
   const artifactPayload = deliveryArtifactPayload(agent, evaluation, {
     generatedAt: options.generatedAt,
+    purpose: options.purpose,
     runId: options.runId,
   });
   const artifactPath = writeJson(agentArtifactPath, artifactPayload);
@@ -216,10 +264,16 @@ function resultForAgent(agent, options) {
       blockingReasons: evaluation.blockingReasons,
       contractDeliveryProven: evaluation.contractDeliveryProven,
       deliveryStatus: evaluation.deliveryStatus,
-      execution: deliveryExecutionForAgent(agent, evaluation),
+      execution: deliveryExecution,
       liveDeliveryProven: evaluation.liveDeliveryProven,
       managerState: agent.managerState,
+      purpose: {
+        defined: options.purpose?.purposeDefined === true,
+        sourceType: options.purpose?.purposeSourceType || "fallback",
+        summary: options.purpose?.purposeSummary || null,
+      },
       route: agent.route,
+      task,
       warningReasons: evaluation.warningReasons,
     },
     eventType: "AGENT_DELIVERY_PROOF",
@@ -233,9 +287,12 @@ function resultForAgent(agent, options) {
     blockingReasons: evaluation.blockingReasons,
     contractDeliveryProven: evaluation.contractDeliveryProven,
     deliveryStatus: evaluation.deliveryStatus,
+    deliveryTask: task,
     id: agent.id,
     liveDeliveryProven: evaluation.liveDeliveryProven,
     managerState: agent.managerState,
+    purposeDefined: options.purpose?.purposeDefined === true,
+    purposeSourceType: options.purpose?.purposeSourceType || "fallback",
     proofEvent,
     route: agent.route,
     ticket,
@@ -265,9 +322,14 @@ function summarizeResults(results) {
     byDeliveryStatus: countBy(results, (result) => result.deliveryStatus),
     byManagerState: countBy(results, (result) => result.managerState),
     byProofStatus: countBy(results, (result) => result.proofEvent.status),
+    byPurposeSourceType: countBy(results, (result) => result.purposeSourceType),
+    byTaskFamily: countBy(results, (result) => result.deliveryTask.taskFamily),
+    byTaskType: countBy(results, (result) => result.deliveryTask.taskType),
     contractDeliveryProven: results.filter((result) => result.contractDeliveryProven).length,
     liveDeliveryProven: results.filter((result) => result.liveDeliveryProven).length,
     notDeliveryProven: results.filter((result) => !result.contractDeliveryProven).length,
+    purposeDefined: results.filter((result) => result.purposeDefined).length,
+    taskSpecificDeliveryProven: results.filter((result) => result.deliveryTask).length,
     selected: results.length,
   };
 }
@@ -279,6 +341,14 @@ export function createAgentDeliveryProof(options = {}) {
     agentIds: options.agentIds || [],
     managedOnly: options.managedOnly === true,
   });
+  const purposeCatalog =
+    options.purposeCatalog ||
+    buildAgentPurposeCatalog({
+      openclawHome: options.openclawHome,
+      plan,
+      repoRoot: options.repoRoot,
+    });
+  const purposeById = new Map(purposeCatalog.agents.map((agent) => [agent.agentId, agent]));
   const runId =
     options.runId ||
     `agent-delivery-${stableHash({
@@ -289,7 +359,12 @@ export function createAgentDeliveryProof(options = {}) {
   const agentArtifactDir = path.resolve(options.agentArtifactDir || DEFAULT_AGENT_ARTIFACT_DIR);
   ensureDir(agentArtifactDir);
   const results = selectedAgents.map((agent) =>
-    resultForAgent(agent, { agentArtifactDir, generatedAt, runId }),
+    resultForAgent(agent, {
+      agentArtifactDir,
+      generatedAt,
+      purpose: purposeById.get(agent.id),
+      runId,
+    }),
   );
   const summary = summarizeResults(results);
   const artifactContract = assertAgentOsArtifactContract({
@@ -308,9 +383,11 @@ export function createAgentDeliveryProof(options = {}) {
         summary.contractDeliveryProven === summary.selected && summary.selected > 0,
       allAgentsLiveDeliveryProven:
         summary.liveDeliveryProven === summary.selected && summary.selected > 0,
+      allAgentsPurposeDefined: summary.purposeDefined === summary.selected && summary.selected > 0,
+      allAgentsPurposeMapped: summary.taskSpecificDeliveryProven === summary.selected,
       arbitraryAgentCodeExecution: false,
       supervisedRouteExecution: true,
-      note: "This proof runs a bounded Agent OS route handler for each selected agent. It proves supervised live delivery through the control plane, not arbitrary local agent code execution.",
+      note: "This proof runs a bounded, purpose-specific Agent OS route handler for each selected agent. It proves supervised live delivery through the control plane, not arbitrary local agent code execution.",
     },
     results,
     roots: plan.roots,
@@ -334,6 +411,7 @@ function parseArgs(argv) {
     repoRoot: process.cwd(),
     requireContract: false,
     requireLive: false,
+    requirePurpose: false,
   };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -385,6 +463,8 @@ function parseArgs(argv) {
       options.requireContract = true;
     } else if (arg === "--require-live") {
       options.requireLive = true;
+    } else if (arg === "--require-purpose") {
+      options.requirePurpose = true;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -398,6 +478,8 @@ function formatSummary(proof) {
     `Contract delivery proven: ${proof.summary.contractDeliveryProven}`,
     `Not delivery proven: ${proof.summary.notDeliveryProven}`,
     `Live delivery proven: ${proof.summary.liveDeliveryProven}`,
+    `Task-specific delivery proven: ${proof.summary.taskSpecificDeliveryProven}`,
+    `Purpose defined from existing sources: ${proof.summary.purposeDefined}`,
     "",
     "Delivery status:",
   ];
@@ -406,6 +488,10 @@ function formatSummary(proof) {
   }
   lines.push("", "Proof status:");
   for (const [name, count] of Object.entries(proof.summary.byProofStatus)) {
+    lines.push(`- ${name}: ${count}`);
+  }
+  lines.push("", "Task families:");
+  for (const [name, count] of Object.entries(proof.summary.byTaskFamily)) {
     lines.push(`- ${name}: ${count}`);
   }
   lines.push("", `Artifact: ${proof.artifactContract.path}`);
@@ -417,6 +503,9 @@ function exitCodeForRequirements(proof, options) {
     return 1;
   }
   if (options.requireContract && !proof.proofClaim.allAgentsContractDeliveryProven) {
+    return 1;
+  }
+  if (options.requirePurpose && !proof.proofClaim.allAgentsPurposeDefined) {
     return 1;
   }
   return 0;

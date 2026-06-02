@@ -140,7 +140,7 @@ The package script builds release artifacts, writes the package inventory, packs
 After packing, inspect the Agent OS files in the tarball:
 
 ```bash
-tar -tf .artifacts/agent-os-rc-package/openclaw-*.tgz | grep -E 'agent-os-agent-delivery-proof|agent-os-agent-inventory|agent-os-agent-manager|agent-os-contracts|proof-events|full-local|capability-agent-profile|capability-proof-kit|capability-agents|agent-os-contract'
+tar -tf .artifacts/agent-os-rc-package/openclaw-*.tgz | grep -E 'agent-os-agent-delivery-proof|agent-os-agent-inventory|agent-os-agent-manager|agent-os-agent-purpose-catalog|agent-os-contracts|proof-events|full-local|capability-agent-profile|capability-proof-kit|capability-agents|agent-os-contract'
 ```
 
 At minimum the tarball must contain:
@@ -152,6 +152,7 @@ At minimum the tarball must contain:
 - `scripts/agents/agent-os-agent-delivery-proof.mjs`
 - `scripts/agents/agent-os-agent-inventory.mjs`
 - `scripts/agents/agent-os-agent-manager.mjs`
+- `scripts/agents/agent-os-agent-purpose-catalog.mjs`
 - `scripts/agents/capability-agent-profile.mjs`
 - `scripts/agents/capability-proof-kit.mjs`
 - `docs/start/agent-os-alpha.md`
@@ -211,9 +212,12 @@ node scripts/agents/agent-os-agent-manager.mjs check
 node scripts/agents/agent-os-agent-manager.mjs plan --output .artifacts/agent-os-agent-manager-plan.json
 node scripts/agents/agent-os-agent-manager.mjs apply --output .artifacts/agent-os-managed-agents.json
 node scripts/agents/agent-os-agent-manager.mjs smoke --all-managed --output .artifacts/agent-os-agent-manager-smoke.json
+node scripts/agents/agent-os-agent-purpose-catalog.mjs audit --output .artifacts/agent-os-agent-purpose-catalog.json --format summary
 ```
 
 The manager writes an `agent-os.agent-manager.v1` catalog and an `agent-os.agent-manager-smoke.v1` control-plane smoke artifact. That proves the repo can discover, classify, route, and contract-smoke managed entries. It does not execute arbitrary local scripts or claim native agent-code execution. Use the delivery proof below for the stronger per-agent route-handler delivery claim.
+
+The purpose catalog reads existing agent definitions, skill frontmatter, skill READMEs, skill-owned agent files, capability profiles, local config, registry entries, and allowlisted local agent metadata such as `IDENTITY.md` and `AGENTS.md`. It writes a purpose-specific task contract for every discovered entry so delivery proof is tied to each agent's own job instead of a generic readiness card.
 
 Run the delivery proof when you need to prove or reject the stronger claim that every discovered entry can deliver:
 
@@ -221,9 +225,10 @@ Run the delivery proof when you need to prove or reject the stronger claim that 
 node scripts/agents/agent-os-agent-delivery-proof.mjs prove --output .artifacts/agent-os-agent-delivery-proof.json --format summary
 node scripts/agents/agent-os-agent-delivery-proof.mjs prove --managed-only --require-contract --output .artifacts/agent-os-managed-delivery-proof.json --format summary
 node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-live --output .artifacts/agent-os-live-delivery-proof.json --format summary
+node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-live --require-purpose --output .artifacts/agent-os-purpose-live-delivery-proof.json --format summary
 ```
 
-The first command writes a proof result for every discovered entry. The second fails closed unless every selected managed entry has contract-delivery proof. The third fails closed unless every selected entry has live delivery proof through a bounded Agent OS route handler.
+The first command writes a proof result for every discovered entry. The second fails closed unless every selected managed entry has contract-delivery proof. The third fails closed unless every selected entry has live delivery proof through a bounded Agent OS route handler. The fourth also fails closed unless every selected entry has source-backed purpose evidence.
 
 A passing `--require-live` run proves every selected entry accepted an Agent OS ticket, produced an artifact, and emitted proof through its native route or supervised import/quarantine route. It does not prove arbitrary local agent code was executed; proof events include that distinction so stale paths and quarantined surfaces remain visible.
 

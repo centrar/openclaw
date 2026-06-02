@@ -130,6 +130,7 @@
     "scripts/agents/agent-os-agent-delivery-proof.mjs",
     "scripts/agents/agent-os-agent-inventory.mjs",
     "scripts/agents/agent-os-agent-manager.mjs",
+    "scripts/agents/agent-os-agent-purpose-catalog.mjs",
     "scripts/agents/capability-agent-profile.mjs",
     "scripts/agents/capability-proof-kit.mjs",
     "!docs/assets/**",

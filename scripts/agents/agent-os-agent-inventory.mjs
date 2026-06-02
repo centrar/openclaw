@@ -87,6 +87,21 @@ function readYamlLike(filePath) {
   return YAML.parse(readFileSync(filePath, "utf8").replace(/^\uFEFF/u, ""));
 }
 
+function readMarkdownAgentLike(filePath) {
+  if (!pathExists(filePath)) {
+    return null;
+  }
+  const text = readFileSync(filePath, "utf8").replace(/^\uFEFF/u, "");
+  if (!text.startsWith("---")) {
+    return null;
+  }
+  const endIndex = text.indexOf("\n---", 3);
+  if (endIndex < 0) {
+    return null;
+  }
+  return YAML.parse(text.slice(3, endIndex));
+}
+
 function listDirectories(dirPath) {
   try {
     return readdirSync(dirPath, { withFileTypes: true })
@@ -330,7 +345,7 @@ function collectWorkspaceDirs(rows, openclawHome) {
 function collectSkillAgentFiles(rows, repoRoot) {
   const skillRoot = path.join(repoRoot, ".agents", "skills");
   const files = walkFiles(skillRoot, (filePath, fileName) => {
-    if (!/\.(json|ya?ml)$/iu.test(fileName)) {
+    if (!/\.(json|md|ya?ml)$/iu.test(fileName)) {
       return false;
     }
     return filePath.split(path.sep).includes("agents");
@@ -340,19 +355,29 @@ function collectSkillAgentFiles(rows, repoRoot) {
     const skill = relative.split("/")[2] || null;
     let parsed = null;
     try {
-      parsed = /\.json$/iu.test(filePath) ? readJsonLike(filePath) : readYamlLike(filePath);
+      parsed = /\.json$/iu.test(filePath)
+        ? readJsonLike(filePath)
+        : /\.md$/iu.test(filePath)
+          ? readMarkdownAgentLike(filePath)
+          : readYamlLike(filePath);
     } catch {
       parsed = null;
     }
     const parsedList = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
-    const ids = parsedList
-      .map((entry) => (entry && typeof entry === "object" ? entry.id || entry.name : null))
-      .filter(Boolean);
-    if (ids.length === 0) {
-      ids.push(`${skill}:${path.basename(filePath, path.extname(filePath))}`);
-    }
-    for (const id of ids) {
+    const entries =
+      parsedList.length > 0
+        ? parsedList
+        : [{ id: `${skill}:${path.basename(filePath, path.extname(filePath))}` }];
+    for (const entry of entries) {
+      const id =
+        entry && typeof entry === "object"
+          ? entry.id || entry.name || `${skill}:${path.basename(filePath, path.extname(filePath))}`
+          : `${skill}:${path.basename(filePath, path.extname(filePath))}`;
       addAgent(rows, id, "repo-skill-agent-file", {
+        displayName:
+          entry && typeof entry === "object"
+            ? entry.displayName || entry.display_name || entry.name || entry.interface?.display_name
+            : null,
         file: filePath,
         kind: "skill-owned-agent",
         skills: skill ? [skill] : [],

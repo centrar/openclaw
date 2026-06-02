@@ -187,6 +187,7 @@ function planEntryForAgent(agent) {
     action: decision.action,
     capabilityFamilies: agent.capabilityFamilies,
     controlPlaneManaged: decision.controlPlaneManaged,
+    displayName: agent.displayName,
     id: agent.id,
     kinds: agent.kinds,
     liveDeliveryProven: decision.liveDeliveryProven,
