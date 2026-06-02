@@ -54,6 +54,7 @@ const DEFAULT_SENTINEL_MODEL = "nvidia/meta/llama-3.1-8b-instruct";
 const DEFAULT_NVIDIA_EMBEDDING_MODEL = "nvidia/nv-embed-v1";
 const DEFAULT_SENTINEL_PROMPT = "Reply exactly: sentinel-smoke-ok";
 const DEFAULT_SMOKE_AGENT = "main";
+const DEFAULT_DIAGNOSTIC_LOG_TAIL_LINES = 120;
 const DEFAULT_FULL_LOCAL_BLACKBOARD_JOURNAL_MODE = "DELETE";
 const DEFAULT_FULL_LOCAL_BLACKBOARD_BUSY_TIMEOUT_MS = 10_000;
 const BLACKBOARD_CLI_CONTAINER_PATH = "/app/scripts/docker/sidecars/blackboard-cli.cjs";
@@ -3511,6 +3512,69 @@ function proofChecks(proof) {
   return checks;
 }
 
+function tailTextLines(value, maxLines = DEFAULT_DIAGNOSTIC_LOG_TAIL_LINES) {
+  const text = String(value ?? "");
+  if (!text) {
+    return "";
+  }
+  const lines = text.split(/\r?\n/);
+  return lines.slice(-Math.max(1, maxLines)).join("\n");
+}
+
+function failedDiagnosticServices(checks) {
+  const services = new Set();
+  for (const check of checks) {
+    if (check.ok) {
+      continue;
+    }
+    if (check.name.startsWith("service:")) {
+      services.add(check.name.slice("service:".length));
+      continue;
+    }
+    if (check.name === "gateway:readyz") {
+      services.add("openclaw-gateway");
+      continue;
+    }
+    if (check.name === "memory-wiki:status") {
+      services.add("openclaw-obsidian-syncer");
+    }
+  }
+  return Array.from(services);
+}
+
+function collectFullLocalDiagnostics(runtime, options = {}) {
+  const cwd = options.cwd ?? resolveRepoRoot();
+  const services = options.services ?? failedDiagnosticServices(options.checks ?? []);
+  if (services.length === 0) {
+    return { services: [], logs: null };
+  }
+  const logs = runDocker(
+    buildComposeArgs([
+      "logs",
+      "--no-color",
+      "--tail",
+      String(DEFAULT_DIAGNOSTIC_LOG_TAIL_LINES),
+      ...services,
+    ]),
+    {
+      capture: true,
+      cwd,
+      env: runtime.env,
+      maxBuffer: 4 * 1024 * 1024,
+      timeoutMs: 30_000,
+    },
+  );
+  return redactSensitiveValue({
+    services,
+    logs: {
+      ok: logs.ok,
+      status: logs.status,
+      stderr: tailTextLines(logs.stderr),
+      stdout: tailTextLines(logs.stdout),
+    },
+  });
+}
+
 export function wikiSummaryReady(summary) {
   return (
     summary?.bridgeEnabled === true &&
@@ -3638,7 +3702,15 @@ export async function collectProof(runtime, options = {}) {
     },
   };
   const evaluation = evaluateProof(proof);
-  return { ...proof, checks: evaluation.checks, ok: evaluation.ok };
+  if (evaluation.ok) {
+    return { ...proof, checks: evaluation.checks, ok: true };
+  }
+  return {
+    ...proof,
+    checks: evaluation.checks,
+    diagnostics: collectFullLocalDiagnostics(runtime, { checks: evaluation.checks, cwd }),
+    ok: false,
+  };
 }
 
 function summarizeWikiStatus(wikiBody) {

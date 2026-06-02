@@ -26,6 +26,7 @@ import {
   buildUpArgs,
   chooseHostPublishPort,
   chooseSentinelPort,
+  collectProof,
   deriveFullLocalRuntime,
   dockerCommandShouldRetry,
   evaluateAgentOsGoldenE2E,
@@ -3665,6 +3666,96 @@ describe("scripts/docker/full-local", () => {
       },
     };
     expect(evaluateProof(withoutBridge).ok).toBe(false);
+  });
+
+  it("captures bounded failed-service logs in failed full-local readiness proof", async () => {
+    const homeDir = mkdtempSync(path.join(tmpdir(), "openclaw-full-local-diagnostics-"));
+    const originalFetch = globalThis.fetch;
+    try {
+      const dockerStub = path.join(homeDir, "docker-stub.cjs");
+      writeFileSync(
+        dockerStub,
+        `
+const args = process.argv.slice(2);
+const joined = args.join(" ");
+if (joined.includes("ps --format json")) {
+  console.log(JSON.stringify([
+    { Service: "openclaw-gateway", Name: "openclaw-openclaw-gateway-1", State: "restarting", Health: "" },
+    { Service: "openclaw-sentinel", Name: "openclaw-openclaw-sentinel-1", State: "running", Health: "healthy" },
+    { Service: "openclaw-signal-hub", Name: "openclaw-openclaw-signal-hub-1", State: "running", Health: "healthy" },
+    { Service: "openclaw-obsidian-syncer", Name: "openclaw-openclaw-obsidian-syncer-1", State: "restarting", Health: "" }
+  ]));
+  process.exit(0);
+}
+if (joined.includes("port openclaw-gateway")) {
+  console.log("127.0.0.1:18789");
+  process.exit(0);
+}
+if (joined.includes("port openclaw-sentinel")) {
+  console.log("127.0.0.1:18888");
+  process.exit(0);
+}
+if (joined.includes("logs --no-color --tail 120")) {
+  console.log("openclaw-gateway-1 | gateway crash");
+  console.log("openclaw-obsidian-syncer-1 | memory crash");
+  process.exit(0);
+}
+if (joined.includes("exec -T")) {
+  console.error("Container is restarting");
+  process.exit(1);
+}
+process.exit(0);
+`,
+      );
+
+      globalThis.fetch = (async (url) => {
+        if (String(url).includes("18888")) {
+          return new Response(JSON.stringify({ keys: 67, ready: true }), { status: 200 });
+        }
+        throw new Error("gateway unavailable");
+      }) as typeof fetch;
+
+      const proof = await collectProof(
+        {
+          env: {
+            ...process.env,
+            OPENCLAW_DOCKER_COMMAND: process.execPath,
+            OPENCLAW_DOCKER_COMMAND_ARGS_JSON: JSON.stringify([dockerStub]),
+            OPENCLAW_FULL_LOCAL_MEMORY_COMMAND_TIMEOUT_MS: "1000",
+            OPENCLAW_MEMORY_WIKI_GATEWAY_TIMEOUT_MS: "1000",
+          },
+          facts: {
+            blackboardDbPath: "/home/node/.openclaw/full-local/swarm_blackboard.db",
+            bridgePort: "18790",
+            containerConfigOverlay: true,
+            customSwarmDir: homeDir,
+            gatewayAuthMode: "token",
+            gatewayPasswordConfigured: false,
+            gatewayPort: "18789",
+            gatewayTokenConfigured: true,
+            msteamsPort: "3978",
+            nativeAgentIds: [],
+            nvidiaApiKeyConfigured: true,
+            nvidiaProviderUsesSentinel: true,
+            sentinelPort: "18888",
+            sentinelTokenConfigured: true,
+            sentinelTokenMatchesNvidiaProvider: true,
+          },
+        },
+        { cwd: path.resolve("."), deadline: Date.now() + 10_000 },
+      );
+
+      expect(proof.ok).toBe(false);
+      expect(proof.diagnostics?.services).toEqual([
+        "openclaw-gateway",
+        "openclaw-obsidian-syncer",
+      ]);
+      expect(proof.diagnostics?.logs?.stdout).toContain("gateway crash");
+      expect(proof.diagnostics?.logs?.stdout).toContain("memory crash");
+    } finally {
+      globalThis.fetch = originalFetch;
+      rmSync(homeDir, { force: true, recursive: true });
+    }
   });
 
   it("requires memory-wiki bridge plus Obsidian render mode for readiness", () => {
