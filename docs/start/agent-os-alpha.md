@@ -140,7 +140,7 @@ The package script builds release artifacts, writes the package inventory, packs
 After packing, inspect the Agent OS files in the tarball:
 
 ```bash
-tar -tf .artifacts/agent-os-rc-package/openclaw-*.tgz | grep -E 'agent-os-agent-inventory|agent-os-agent-manager|agent-os-contracts|proof-events|full-local|capability-agent-profile|capability-proof-kit|capability-agents|agent-os-contract'
+tar -tf .artifacts/agent-os-rc-package/openclaw-*.tgz | grep -E 'agent-os-agent-delivery-proof|agent-os-agent-inventory|agent-os-agent-manager|agent-os-contracts|proof-events|full-local|capability-agent-profile|capability-proof-kit|capability-agents|agent-os-contract'
 ```
 
 At minimum the tarball must contain:
@@ -149,6 +149,7 @@ At minimum the tarball must contain:
 - `scripts/docker/sidecars/`
 - `scripts/lib/agent-os-contracts.cjs`
 - `scripts/lib/proof-events.cjs`
+- `scripts/agents/agent-os-agent-delivery-proof.mjs`
 - `scripts/agents/agent-os-agent-inventory.mjs`
 - `scripts/agents/agent-os-agent-manager.mjs`
 - `scripts/agents/capability-agent-profile.mjs`
@@ -213,6 +214,16 @@ node scripts/agents/agent-os-agent-manager.mjs smoke --all-managed --output .art
 ```
 
 The manager writes an `agent-os.agent-manager.v1` catalog and an `agent-os.agent-manager-smoke.v1` control-plane smoke artifact. That proves the repo can discover, classify, route, and contract-smoke managed entries. It does not execute arbitrary local scripts or claim every discovered agent has completed a real user task. Per-agent live delivery still needs dispatcher, adapter, or full-local proof for the selected worker.
+
+Run the delivery proof when you need to prove or reject the stronger claim that every discovered entry can deliver:
+
+```bash
+node scripts/agents/agent-os-agent-delivery-proof.mjs prove --output .artifacts/agent-os-agent-delivery-proof.json --format summary
+node scripts/agents/agent-os-agent-delivery-proof.mjs prove --managed-only --require-contract --output .artifacts/agent-os-managed-delivery-proof.json --format summary
+node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-live --output .artifacts/agent-os-live-delivery-proof.json --format summary
+```
+
+The first command writes a proof result for every discovered entry. The second fails closed unless every selected managed entry has contract-delivery proof. The third fails closed unless every selected entry has real live execution proof. Until live executors exist for each route, `--require-live` is expected to fail and should be treated as the honest release blocker for any "all agents work and deliver" claim.
 
 External framework adapters should target the Agent OS contract rather than bypass it:
 

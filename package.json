@@ -127,6 +127,7 @@
     "docs/",
     "!docs/.generated/**",
     "!docs/channels/qa-channel.md",
+    "scripts/agents/agent-os-agent-delivery-proof.mjs",
     "scripts/agents/agent-os-agent-inventory.mjs",
     "scripts/agents/agent-os-agent-manager.mjs",
     "scripts/agents/capability-agent-profile.mjs",

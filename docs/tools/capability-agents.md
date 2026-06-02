@@ -39,6 +39,16 @@ node scripts/agents/agent-os-agent-manager.mjs smoke --all-managed --output .art
 
 `apply` writes a local catalog artifact; it does not bulk-edit `openclaw.json` or execute discovered scripts. `smoke --all-managed` validates control-plane routing and Agent OS ticket/proof/artifact contracts for registered and adapter-managed entries. Real live delivery remains a separate proof: the selected agent must claim a ticket, run, write artifacts, emit proof events, and finish through the dispatcher or adapter.
 
+Run delivery proof before claiming every agent can work:
+
+```bash
+node scripts/agents/agent-os-agent-delivery-proof.mjs prove --output .artifacts/agent-os-agent-delivery-proof.json --format summary
+node scripts/agents/agent-os-agent-delivery-proof.mjs prove --managed-only --require-contract --output .artifacts/agent-os-managed-delivery-proof.json --format summary
+node scripts/agents/agent-os-agent-delivery-proof.mjs prove --require-live --output .artifacts/agent-os-live-delivery-proof.json --format summary
+```
+
+Contract delivery proves the Agent OS can select the entry, issue a ticket contract, write a proof artifact, and emit an Agent OS proof event. Live delivery is stricter: the agent or adapter itself must execute a low-impact task. Do not market an agent as working until the live proof passes for that agent.
+
 Check whether the profiles are installed in your OpenClaw config:
 
 ```bash

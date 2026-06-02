@@ -12,6 +12,7 @@ on:
       - "docs/tools/capability-agents.md"
       - "docs/reference/agent-os-contract.md"
       - "docs/docs.json"
+      - "scripts/agents/agent-os-agent-delivery-proof.mjs"
       - "scripts/agents/agent-os-agent-inventory.mjs"
       - "scripts/agents/agent-os-agent-manager.mjs"
       - "scripts/agents/capability-agent-profile.mjs"
@@ -19,6 +20,7 @@ on:
       - "scripts/docker/**"
       - "scripts/lib/agent-os-contracts.cjs"
       - "scripts/lib/proof-events.cjs"
+      - "test/scripts/agent-os-agent-delivery-proof.test.ts"
       - "test/scripts/agent-os-agent-inventory.test.ts"
       - "test/scripts/agent-os-agent-manager.test.ts"
       - "test/scripts/capability-agent-profile.test.ts"
@@ -85,6 +87,7 @@ jobs:
           set -euo pipefail
           node --check scripts/docker/full-local.mjs
           node --check scripts/package-openclaw-for-docker.mjs
+          node --check scripts/agents/agent-os-agent-delivery-proof.mjs
           node --check scripts/agents/agent-os-agent-inventory.mjs
           node --check scripts/agents/agent-os-agent-manager.mjs
 
@@ -94,6 +97,7 @@ jobs:
           node scripts/run-vitest.mjs \
             test/scripts/package-openclaw-for-docker.test.ts \
             test/scripts/full-local-docker.test.ts \
+            test/scripts/agent-os-agent-delivery-proof.test.ts \
             test/scripts/agent-os-agent-inventory.test.ts \
             test/scripts/agent-os-agent-manager.test.ts \
             test/scripts/agent-os-contracts.test.ts \
@@ -145,6 +149,7 @@ jobs:
             "package/scripts/docker/sidecars/python-mcp-launcher.cjs"
             "package/scripts/lib/agent-os-contracts.cjs"
             "package/scripts/lib/proof-events.cjs"
+            "package/scripts/agents/agent-os-agent-delivery-proof.mjs"
             "package/scripts/agents/agent-os-agent-inventory.mjs"
             "package/scripts/agents/agent-os-agent-manager.mjs"
             "package/scripts/agents/capability-agent-profile.mjs"
@@ -168,6 +173,7 @@ jobs:
           node "$pkg/openclaw.mjs" --version
           test -f "$pkg/scripts/docker/full-local.mjs"
           test -f "$pkg/scripts/lib/agent-os-contracts.cjs"
+          test -f "$pkg/scripts/agents/agent-os-agent-delivery-proof.mjs"
           test -f "$pkg/scripts/agents/agent-os-agent-inventory.mjs"
           test -f "$pkg/scripts/agents/agent-os-agent-manager.mjs"
           test -f "$pkg/scripts/agents/capability-agent-profile.mjs"
